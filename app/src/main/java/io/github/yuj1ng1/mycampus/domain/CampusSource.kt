@@ -12,12 +12,16 @@ enum class CampusSource(val label: String, val entryUrl: String, val expectedPat
     fun matchesResultUrl(url: String): Boolean = runCatching {
         val uri = URI(url)
         val expectedHost = URI(entryUrl).host
-        WebPolicy.isSchoolUrl(url) && uri.host.equals(expectedHost, true) && uri.path == expectedPath
+        WebPolicy.isSchoolUrl(url) && uri.host.equals(expectedHost, true) && uri.path == expectedPath &&
+            (isAcademic || SchoolAccessPolicy.isPowerPage(url))
     }.getOrDefault(false)
+
+    val isAcademic: Boolean get() = this !in setOf(POWER, POWER_USAGE)
 }
 
 object WebPolicy {
     const val VPN_URL = "https://webvpn.fjut.edu.cn/"
+    const val SSO_URL = "https://nids-443.webvpn.fjut.edu.cn/authserver/login?service=https%3A%2F%2Fjwxt-443.webvpn.fjut.edu.cn%2Fsso%2Fjziotlogin"
     const val CALENDAR_URL = "https://jwc.fjut.edu.cn/2026/0701/c12011a269787/page.htm"
     private val allowedHosts = setOf(
         "vpnsite.fjut.edu.cn", "webvpn.fjut.edu.cn", "nids-443.webvpn.fjut.edu.cn",

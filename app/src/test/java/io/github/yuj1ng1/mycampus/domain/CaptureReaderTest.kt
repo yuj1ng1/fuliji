@@ -51,4 +51,11 @@ class CaptureReaderTest {
             "https://user@webvpn.fjut.edu.cn/", "javascript:alert(1)", "file:///sdcard/a.html",
             "https://webvpn.fjut.edu.cn:444/").forEach { assertFalse(it, WebPolicy.isSchoolUrl(it)) }
     }
+
+    @Test fun privateUseSchoolIconsAreRemovedBeforeParsingCourseTime() {
+        val root = JSONObject().put("status", "ok").put("scope", "2026-2027学年第1学期")
+            .put("cells", JSONArray().put(JSONObject().put("day", 1).put("text",
+                "合成课程\n\uE001(1-2节)1-16周\n\uE002示例教室\n\uE003示例教师")))
+        assertEquals(1, read(CampusSource.COURSES, root).rows.size)
+    }
 }

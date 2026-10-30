@@ -13,7 +13,13 @@ class CampusRepository(private val database: CampusDatabase) {
     suspend fun saveCapture(source: CampusSource, capture: Capture) {
         val now = System.currentTimeMillis()
         database.withTransaction {
-            dao.putSnapshot(SavedSnapshot(source.name + "|" + capture.scope, source.name, capture.scope, capture.payload, capture.rows.size, now))
+            val id = source.name + "|" + capture.scope
+            val rows = if (source == CampusSource.POWER_USAGE) {
+                // A new month can omit the end of the previous month. Preserve already-known days for this room only.
+                (dao.snapshot(id)?.let { CaptureReader.decode(it.payload) }.orEmpty() + capture.rows)
+                    .associateBy { it.title }.values.sortedBy { it.title }.takeLast(366)
+            } else capture.rows
+            dao.putSnapshot(SavedSnapshot(id, source.name, capture.scope, CaptureReader.encode(rows), rows.size, now))
             dao.putConnection(ConnectionState(source.name, "SUCCESS", if (capture.empty) "当前查询暂无记录" else "已保存本次查询结果", now))
         }
     }
@@ -42,4 +48,6 @@ class CampusRepository(private val database: CampusDatabase) {
     }
 
     suspend fun deleteEntry(id: String) = dao.deleteEntry(id)
+
+    suspend fun clearCampusCache() = database.withTransaction { dao.clearSnapshots(); dao.clearConnections() }
 }

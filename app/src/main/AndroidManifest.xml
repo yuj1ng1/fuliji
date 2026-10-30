@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <queries><package android:name="com.tencent.wework" /></queries>
     <application
         android:name=".CampusApplication"
         android:allowBackup="false"
@@ -18,6 +19,13 @@
             </intent-filter>
         </activity>
         <activity android:name=".web.CampusWebActivity" android:exported="false" />
+        <activity android:name=".web.PowerLinkImportActivity" android:exported="true" android:label="导入榕集后勤授权">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
         <service
             android:name=".notifications.PaymentNotificationListener"
             android:exported="true"

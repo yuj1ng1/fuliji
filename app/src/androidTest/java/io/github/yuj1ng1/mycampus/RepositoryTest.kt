@@ -41,6 +41,30 @@ class RepositoryTest {
         repository.saveCapture(CampusSource.POWER, Capture("示例房间B", rowsB, CaptureReader.encode(rowsB), false))
         assertEquals(setOf("示例房间A", "示例房间B"), repository.snapshots.first().map { it.scope }.toSet())
     }
+
+    @Test fun monthlyUsageMergesKnownDaysOnlyWithinTheSameRoom() = runBlocking {
+        suspend fun save(room: String, vararg days: Pair<String, String>) {
+            val rows = days.map { DisplayRow(it.first, it.second) }
+            repository.saveCapture(CampusSource.POWER_USAGE, Capture(room, rows, CaptureReader.encode(rows), false))
+        }
+        save("示例房间A", "2026-09-30" to "1", "2026-10-01" to "2")
+        save("示例房间B", "2026-09-30" to "99")
+        save("示例房间A", "2026-10-01" to "2.5", "2026-10-02" to "0")
+        val snapshots = repository.snapshots.first()
+        val daysA = CaptureReader.decode(snapshots.single { it.scope == "示例房间A" }.payload)
+        assertEquals(listOf(DisplayRow("2026-09-30", "1"), DisplayRow("2026-10-01", "2.5"), DisplayRow("2026-10-02", "0")), daysA)
+        assertEquals("99", CaptureReader.decode(snapshots.single { it.scope == "示例房间B" }.payload).single().detail)
+    }
+
+    @Test fun clearingSchoolCacheDoesNotRemoveConfirmedLedgerEntries() = runBlocking {
+        repository.addExpense(321, "合成测试账目")
+        val rows = listOf(DisplayRow("示例课程", "示例内容"))
+        repository.saveCapture(CampusSource.COURSES, Capture("示例学期", rows, CaptureReader.encode(rows), false))
+        repository.clearCampusCache()
+        assertTrue(repository.snapshots.first().isEmpty())
+        assertTrue(repository.connections.first().isEmpty())
+        assertEquals("合成测试账目", repository.ledger.first().single().note)
+    }
     @Test fun notificationDuplicateDoesNotOverwriteUserConfirmation() = runBlocking {
         val candidate = PaymentCandidate("synthetic-event-id", "合成支付来源", "EXPENSE", 1230, 1234)
         repository.saveCandidate(candidate)

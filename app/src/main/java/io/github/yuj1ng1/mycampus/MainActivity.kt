@@ -76,6 +76,7 @@ private val tabs = listOf("今日", "课表", "校园", "账本")
 @Composable
 private fun CampusApp(repository: CampusRepository) {
     val context = LocalContext.current
+    val app = context.applicationContext as CampusApplication
     val snapshots by repository.snapshots.collectAsStateWithLifecycle(emptyList())
     val connections by repository.connections.collectAsStateWithLifecycle(emptyList())
     val ledger by repository.ledger.collectAsStateWithLifecycle(emptyList())
@@ -90,6 +91,7 @@ private fun CampusApp(repository: CampusRepository) {
     var error by remember { mutableStateOf<String?>(null) }
     var today by remember { mutableStateOf(LocalDate.now(SchoolCalendar.zone)) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { app.applicationScope.launch { app.schoolSync.onForeground() } }
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
@@ -169,7 +171,7 @@ private fun CampusApp(repository: CampusRepository) {
         }
     }
     if (showCalendar) CalendarViewer { showCalendar = false }
-    if (showSettings) SettingsDialog { showSettings = false }
+    if (showSettings) SchoolConnectionSettings(app) { showSettings = false }
     detail?.let { source ->
         Dialog(onDismissRequest = { detail = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -247,6 +249,8 @@ private fun EmptyCard(title: String, body: String) {
 @Composable
 private fun SnapshotScreen(source: CampusSource, snapshots: List<SavedSnapshot>, connections: List<ConnectionState>) {
     val context = LocalContext.current
+    val app = context.applicationContext as CampusApplication
+    val sync by app.schoolSync.progress.collectAsStateWithLifecycle()
     val saved = snapshots.filter { it.source == source.name }
     val connection = connections.firstOrNull { it.source == source.name }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -258,6 +262,11 @@ private fun SnapshotScreen(source: CampusSource, snapshots: List<SavedSnapshot>,
         item {
             Button(onClick = { CampusWebActivity.open(context, source) }, modifier = Modifier.fillMaxWidth().testTag("connect-" + source.name)) {
                 Icon(Icons.Outlined.Search, null); Spacer(Modifier.width(8.dp)); Text("打开学校查询")
+            }
+        }
+        if (source.isAcademic) item {
+            OutlinedButton(onClick = { app.applicationScope.launch { app.schoolSync.refresh(source) } }, enabled = !sync.running, modifier = Modifier.fillMaxWidth()) {
+                Text(if (sync.running) "正在更新…" else "使用已有登录更新")
             }
         }
         connection?.let { state ->
@@ -294,12 +303,18 @@ private fun SnapshotScreen(source: CampusSource, snapshots: List<SavedSnapshot>,
 @Composable
 private fun PowerScreen(snapshots: List<SavedSnapshot>, connections: List<ConnectionState>, today: LocalDate) {
     val context = LocalContext.current
+    val app = context.applicationContext as CampusApplication
+    var showPowerAccess by remember { mutableStateOf(false) }
     val saved = snapshots.filter { it.source == CampusSource.POWER.name || it.source == CampusSource.POWER_USAGE.name }
     val latestRoom = saved.firstOrNull()?.scope
     var room by remember(latestRoom) { mutableStateOf(latestRoom) }
     val power = saved.firstOrNull { it.source == CampusSource.POWER.name && it.scope == room }
     val usage = saved.firstOrNull { it.source == CampusSource.POWER_USAGE.name && it.scope == room }
     val series = PowerHistory.lastSevenDays(usage?.let { CaptureReader.decode(it.payload) }.orEmpty(), today)
+    if (showPowerAccess) PowerAccessDialog(app, onConnected = {
+        showPowerAccess = false
+        CampusWebActivity.open(context, CampusSource.POWER, authorize = true)
+    }, onDismiss = { showPowerAccess = false })
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp, 8.dp, 20.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Text("宿舍用电", style = MaterialTheme.typography.headlineSmall) }
         if (saved.map { it.scope }.distinct().size > 1) item {
@@ -310,6 +325,11 @@ private fun PowerScreen(snapshots: List<SavedSnapshot>, connections: List<Connec
             }
         }
         item { PowerUsageCard(power, usage, today, room) }
+        item {
+            OutlinedButton(onClick = { showPowerAccess = true }, modifier = Modifier.fillMaxWidth()) { Text("企业微信后勤接入 / 重新授权") }
+        }
+        if (saved.isEmpty()) item { Text("后勤使用独立授权。若网页空白或要求未知密码，请从上方进入企业微信接入；不要填写教务密码。",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = { CampusWebActivity.open(context, CampusSource.POWER) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(11.dp)) {
@@ -425,20 +445,6 @@ private fun CalendarViewer(onDismiss: () -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun SettingsDialog(onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("关于这个版本") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("榕集 " + BuildConfig.VERSION_NAME)
-                Text("个人校园助手，非学校官方应用。数据保存在本机，校园账号仅在学校页面登录。")
-                Text("这是第一阶段体验版：课程时间提醒、电量后台提醒、账本导出与自动入账尚未提供。")
-                Text("支付通知需你自行授权；识别规则尚需真机核验。候选记录先待确认，不保存通知正文。")
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } })
 }
 
 private fun timestamp(value: Long) = Instant.ofEpochMilli(value).atZone(SchoolCalendar.zone)

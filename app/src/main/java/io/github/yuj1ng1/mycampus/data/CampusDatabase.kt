@@ -37,6 +37,8 @@ data class LedgerEntry(
 interface CampusDao {
     @Query("SELECT * FROM campus_snapshots ORDER BY capturedAt DESC")
     fun snapshots(): Flow<List<SavedSnapshot>>
+    @Query("SELECT * FROM campus_snapshots WHERE id = :id LIMIT 1")
+    suspend fun snapshot(id: String): SavedSnapshot?
     @Query("SELECT * FROM connection_states")
     fun connections(): Flow<List<ConnectionState>>
     @Query("SELECT * FROM ledger_entries ORDER BY occurredAt DESC")
@@ -51,6 +53,10 @@ interface CampusDao {
     suspend fun confirmExpense(id: String, cents: Long, note: String)
     @Query("DELETE FROM ledger_entries WHERE id = :id")
     suspend fun deleteEntry(id: String)
+    @Query("DELETE FROM campus_snapshots")
+    suspend fun clearSnapshots()
+    @Query("DELETE FROM connection_states")
+    suspend fun clearConnections()
 }
 
 @Database(entities = [SavedSnapshot::class, ConnectionState::class, LedgerEntry::class], version = 1, exportSchema = true)

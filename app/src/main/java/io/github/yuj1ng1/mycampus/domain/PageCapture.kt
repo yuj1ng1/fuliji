@@ -63,6 +63,26 @@ object CaptureReader {
     }
 
     private fun readCourses(root: JSONObject): List<DisplayRow> {
+        root.optJSONArray("courses")?.let { courses ->
+            if (courses.length() !in 1..300 || root.optJSONObject("diagnostics")?.optInt("courseBlocks") != courses.length()) {
+                throw CaptureException("课程记录不完整，暂不覆盖原课表。")
+            }
+            val rows = (0 until courses.length()).map { index ->
+                val course = courses.getJSONObject(index)
+                val day = course.optInt("day")
+                val name = cleanCourseLine(course.optString("name"))
+                val rawRule = cleanCourseLine(course.optString("rule"))
+                if (day !in 1..7 || name.length !in 1..150) throw CaptureException("有课程名称或星期无法确认，暂不覆盖原课表。")
+                validateCourseRule(rawRule)
+                val details = mutableListOf(rawRule)
+                course.optJSONArray("details")?.let { fields ->
+                    for (field in 0 until fields.length()) cleanCourseLine(fields.getString(field)).takeIf(String::isNotBlank)?.let(details::add)
+                }
+                DisplayRow("星期" + "一二三四五六日"[day - 1] + " · " + name, details.joinToString("\n"))
+            }.toMutableList()
+            appendUnfixed(root, rows)
+            return rows
+        }
         val cells = root.optJSONArray("cells") ?: throw CaptureException("没有找到课表。")
         if (cells.length() > 200) throw CaptureException("课表结构暂时无法识别。")
         val rows = mutableListOf<DisplayRow>()
@@ -90,13 +110,29 @@ object CaptureReader {
             }
             if (lines.isNotEmpty() && identified == 0) throw CaptureException("有课程单元格无法识别，暂不覆盖原课表。")
         }
+        appendUnfixed(root, rows)
+        return rows
+    }
+
+    private fun cleanCourseLine(raw: String) = raw.replace(Regex("[\\uE000-\\uF8FF]"), "").trim()
+        .replace("（", "(").replace("）", ")")
+
+    private fun validateCourseRule(raw: String) {
+        val match = Regex("""^\((\d{1,2})(?:-(\d{1,2}))?节\)(.+)$""").matchEntire(raw)
+            ?: throw CaptureException("有课程时间规则无法识别，暂不覆盖原课表。")
+        val start = match.groupValues[1].toInt()
+        val end = match.groupValues[2].ifBlank { match.groupValues[1] }.toInt()
+        if (start !in 1..24 || end !in start..24) throw CaptureException("有课程节次无法识别。")
+        runCatching { WeekRules.parse(match.groupValues[3]) }.getOrElse { throw CaptureException("有课程周次无法识别，暂不覆盖原课表。") }
+    }
+
+    private fun appendUnfixed(root: JSONObject, rows: MutableList<DisplayRow>) {
         root.optJSONArray("unfixed")?.let { array ->
             for (i in 0 until array.length()) {
                 val detail = array.getString(i).trim()
                 if (detail.isNotBlank()) rows += DisplayRow("实践与其他课程", detail.take(3000))
             }
         }
-        return rows
     }
 
     private fun readGrid(source: CampusSource, root: JSONObject): List<DisplayRow> {
