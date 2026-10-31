@@ -1,11 +1,8 @@
 package io.github.yuj1ng1.mycampus
 
-import android.app.NotificationManager
-import android.content.ComponentName
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -69,6 +66,7 @@ class MainActivity : ComponentActivity() {
         val repository = (application as CampusApplication).repository
         setContent { CampusTheme { CampusApp(repository) } }
     }
+    override fun onResume() { super.onResume(); PaymentNotificationListener.ensureConnected(this) }
 }
 
 private val tabs = listOf("今日", "课表", "校园", "账本")
@@ -142,6 +140,11 @@ private fun CampusApp(repository: CampusRepository) {
                     contentPadding = PaddingValues(20.dp, 10.dp, 20.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     item { LedgerSummaryCard(ledger, today) }
+                    if (drafts > 0) item {
+                        FilledTonalButton(onClick = { editing = ledger.first { it.status == "DRAFT" } }, modifier = Modifier.fillMaxWidth().testTag("review-latest-payment")) {
+                            Text("核对待确认支付（${drafts}笔）")
+                        }
+                    }
                     item { NotificationAccessCard() }
                     item {
                         FilledTonalButton(onClick = { addExpense = true }, modifier = Modifier.fillMaxWidth()) {
@@ -380,31 +383,6 @@ private fun PowerScreen(snapshots: List<SavedSnapshot>, connections: List<Connec
         }
         usage?.let { snapshot -> item { Text("用量保存于 " + timestamp(snapshot.capturedAt) + " · 仅展示学校公布的数值，原表未标单位。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) } }
-    }
-}
-
-@Composable
-private fun NotificationAccessCard() {
-    val context = LocalContext.current
-    var access by remember { mutableStateOf(false) }
-    val connected by PaymentNotificationListener.connected.collectAsStateWithLifecycle()
-    val lastWriteFailed by PaymentNotificationListener.lastWriteFailed.collectAsStateWithLifecycle()
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        access = context.getSystemService(NotificationManager::class.java)
-            .isNotificationListenerAccessGranted(ComponentName(context, PaymentNotificationListener::class.java))
-    }
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("支付通知", fontWeight = FontWeight.SemiBold)
-            Text(if (!access) "尚未开启通知访问" else if (connected) "已连接 · 新识别记录将进入待确认" else "已授权 · 等待系统连接",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-            if (lastWriteFailed) Text("保存支付记录失败，请稍后重试。", color = MaterialTheme.colorScheme.error)
-            Text("仅保存候选金额、来源和通知时间，正文不保存。请核对后计入支出。",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-            TextButton(onClick = {
-                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            }) { Text(if (access) "查看系统授权" else "由我开启通知访问") }
-        }
     }
 }
 

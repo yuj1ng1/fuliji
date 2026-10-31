@@ -30,10 +30,14 @@ class CampusRepository(private val database: CampusDatabase) {
     }
 
     suspend fun saveCandidate(candidate: PaymentCandidate) {
-        dao.insertEntry(LedgerEntry(
+        saveCandidateIfNew(candidate)
+    }
+
+    suspend fun saveCandidateIfNew(candidate: PaymentCandidate): Boolean {
+        return dao.insertEntry(LedgerEntry(
             candidate.eventId, candidate.sourceName, candidate.kind, candidate.amountCents,
             candidate.notificationTime, "NOTIFICATION", "", "DRAFT",
-        ))
+        )) != -1L
     }
 
     suspend fun addExpense(cents: Long, note: String) {

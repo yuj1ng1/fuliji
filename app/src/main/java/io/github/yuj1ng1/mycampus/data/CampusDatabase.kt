@@ -48,7 +48,7 @@ interface CampusDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putConnection(state: ConnectionState)
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertEntry(entry: LedgerEntry)
+    suspend fun insertEntry(entry: LedgerEntry): Long
     @Query("UPDATE ledger_entries SET amountCents = :cents, kind = 'EXPENSE', note = :note, status = 'CONFIRMED' WHERE id = :id AND status = 'DRAFT'")
     suspend fun confirmExpense(id: String, cents: Long, note: String)
     @Query("DELETE FROM ledger_entries WHERE id = :id")
