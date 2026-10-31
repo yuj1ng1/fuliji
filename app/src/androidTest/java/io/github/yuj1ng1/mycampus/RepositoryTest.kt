@@ -65,6 +65,17 @@ class RepositoryTest {
         assertTrue(repository.connections.first().isEmpty())
         assertEquals("合成测试账目", repository.ledger.first().single().note)
     }
+
+    @Test fun changingPowerAccountClearsOnlyPowerSnapshotsAndKeepsAcademicDataAndLedger() = runBlocking {
+        val rows = listOf(DisplayRow("合成记录", "合成内容"))
+        for (source in listOf(CampusSource.COURSES, CampusSource.POWER, CampusSource.POWER_USAGE))
+            repository.saveCapture(source, Capture("合成范围", rows, CaptureReader.encode(rows), false))
+        repository.addExpense(100, "合成账本")
+        repository.clearPowerCache()
+        assertEquals("COURSES", repository.snapshots.first().single().source)
+        assertEquals("COURSES", repository.connections.first().single().source)
+        assertEquals("合成账本", repository.ledger.first().single().note)
+    }
     @Test fun notificationDuplicateDoesNotOverwriteUserConfirmation() = runBlocking {
         val candidate = PaymentCandidate("synthetic-event-id", "合成支付来源", "EXPENSE", 1230, 1234)
         repository.saveCandidate(candidate)

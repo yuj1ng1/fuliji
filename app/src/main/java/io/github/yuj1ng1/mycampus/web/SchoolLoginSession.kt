@@ -9,14 +9,15 @@ import io.github.yuj1ng1.mycampus.domain.*
 import java.net.URI
 
 data class AuthProgress(val state: String, val message: String = "") {
-    val requiresUser get() = state in setOf("LOGIN_REQUIRED", "CAPTCHA", "REJECTED")
+    val requiresUser get() = state in setOf("LOGIN_REQUIRED", "CAPTCHA", "REJECTED", "PHONE_REQUIRED")
 }
 
-/** One submission per authentication origin per explicit connection attempt. Never fills the HQ backend login. */
+/** One academic submission per origin. HQ only pre-fills identity fields; the user controls SMS and binding. */
 class SchoolLoginSession(
     private val context: Context,
     private val options: SchoolPreferences,
     private val accountProvider: () -> SchoolAccount?,
+    private val powerAccountProvider: () -> SchoolAccount? = { null },
 ) {
     private val submitted = mutableMapOf<String, Long>()
     private var routedToSso = false
@@ -25,6 +26,16 @@ class SchoolLoginSession(
 
     suspend fun advance(view: WebView, source: CampusSource): AuthProgress {
         val url = view.url.orEmpty()
+        if (!source.isAcademic && SchoolAccessPolicy.allowsPowerIdentityFields(url)) {
+            val state = SchoolScripts.evaluate(view, SchoolScripts.powerBinding(context, null)).optString("state")
+            if (state == "phone_required") {
+                val account = powerAccountProvider()
+                if (account != null) SchoolScripts.evaluate(view, SchoolScripts.powerBinding(context, account))
+                return AuthProgress("PHONE_REQUIRED", if (account != null)
+                    "已填入后勤学号和密码。请本人输入手机号、接收短信验证码，核对后在学校页面点击“立即绑定”。"
+                    else "请本人完成手机号验证，填写后勤独立账号并确认绑定。手机号和短信码无需发给开发者。")
+            }
+        }
         if (source.isAcademic && SchoolAccessPolicy.isAcademicLocalLogin(url)) {
             if (routedToSso) return AuthProgress("LOGIN_REQUIRED", "学校认证仍未完成，请在学校页面确认登录。")
             routedToSso = true

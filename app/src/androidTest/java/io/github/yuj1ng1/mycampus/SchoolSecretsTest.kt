@@ -54,4 +54,16 @@ class SchoolSecretsTest {
         preferences.edit().putString("account", parts[0] + ":" + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)).commit()
         assertThrows(IllegalStateException::class.java) { secrets.account() }
     }
+
+    @Test fun powerAccountIsIndependentFromAcademicPassword() {
+        val secrets = SchoolSecrets(context, namespace)
+        secrets.saveAccount(SchoolAccount("synthetic-academic", "dummy-academic-password"))
+        secrets.savePowerAccount(SchoolAccount("synthetic-power", "dummy-power-password"))
+        assertEquals("dummy-academic-password", secrets.account()!!.password)
+        assertEquals("dummy-power-password", SchoolSecrets(context, namespace).powerAccount()!!.password)
+        secrets.removeAccount()
+        assertEquals("dummy-power-password", secrets.powerAccount()!!.password)
+        secrets.removePowerAccount()
+        assertNull(secrets.powerAccount())
+    }
 }

@@ -60,7 +60,7 @@ class CampusWebActivity : ComponentActivity() {
         SchoolBrowserLease.enter()
         browserLease = true
         enableEdgeToEdge()
-        login = SchoolLoginSession(this, app.schoolOptions) { app.schoolSecrets.account() }
+        login = SchoolLoginSession(this, app.schoolOptions, { app.schoolSecrets.account() }, { app.schoolSecrets.powerAccount() })
         schoolView = WebView(this)
         SchoolWebSettings.apply(schoolView)
         schoolView.webViewClient = object : WebViewClient() {
@@ -84,7 +84,7 @@ class CampusWebActivity : ComponentActivity() {
             override fun onPageFinished(view: WebView, url: String?) {
                 loading = false
                 CookieManager.getInstance().flush()
-                if (!fatalPageError) message = if (source.isAcademic) "请完成学校查询，识别到完整结果后即可保存。" else "请完成后勤授权并选择宿舍；后勤不使用教务后台登录。"
+                if (!fatalPageError) message = if (source.isAcademic) "请完成学校查询，识别到完整结果后即可保存。" else "请完成后勤独立登录并选择宿舍，识别到结果后即可保存。"
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) pageFailed("NETWORK_ERROR", "学校页面暂时无法打开，请检查网络后重试。")
@@ -177,6 +177,7 @@ class CampusWebActivity : ComponentActivity() {
             if (progress.state != "NONE") {
                 resultPage = false
                 message = progress.message
+                if (progress.state == "PHONE_REQUIRED") fail("NEEDS_PHONE_VERIFICATION", progress.message)
                 return
             }
             val url = schoolView.url.orEmpty()
@@ -200,7 +201,7 @@ class CampusWebActivity : ComponentActivity() {
                     redirectedBodyLogin = true
                     schoolView.loadUrl(WebPolicy.SSO_URL)
                 } else if (!source.isAcademic) {
-                    fail("NEEDS_WECOM", "后勤需要企业微信独立授权，请点“后勤接入”；不要在此填写教务密码。")
+                    fail("NEEDS_PHONE_VERIFICATION", "后勤需要本人完成手机号验证与身份认证，请在学校页面操作；可从“后勤接入”保存独立后勤账号。")
                 } else message = "学校登录尚未完成，请在学校页面确认。"
                 return
             }

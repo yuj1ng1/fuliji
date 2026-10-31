@@ -57,6 +57,10 @@ interface CampusDao {
     suspend fun clearSnapshots()
     @Query("DELETE FROM connection_states")
     suspend fun clearConnections()
+    @Query("DELETE FROM campus_snapshots WHERE source IN ('POWER', 'POWER_USAGE')")
+    suspend fun clearPowerSnapshots()
+    @Query("DELETE FROM connection_states WHERE source IN ('POWER', 'POWER_USAGE')")
+    suspend fun clearPowerConnections()
 }
 
 @Database(entities = [SavedSnapshot::class, ConnectionState::class, LedgerEntry::class], version = 1, exportSchema = true)

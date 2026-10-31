@@ -22,6 +22,7 @@ class SchoolSecrets(context: Context, private val namespace: String = "rongji.sc
     private val alias = namespace + ".aes"
     fun hasAccount(): Boolean = preferences.contains("account")
     fun hasPowerLink(): Boolean = preferences.contains("power_link")
+    fun hasPowerAccount(): Boolean = preferences.contains("power_account")
 
     fun account(): SchoolAccount? = read("account")?.let { text ->
         JSONObject(text).let { SchoolAccount(it.getString("username"), it.getString("password")) }
@@ -31,9 +32,17 @@ class SchoolSecrets(context: Context, private val namespace: String = "rongji.sc
         write("account", JSONObject().put("username", account.username.trim()).put("password", account.password).toString())
     }
     fun removeAccount() { check(preferences.edit().remove("account").commit()) }
-    fun powerLink(): String? = read("power_link")?.takeIf(SchoolAccessPolicy::isSignedPowerLink)
+    fun powerAccount(): SchoolAccount? = read("power_account")?.let { text ->
+        JSONObject(text).let { SchoolAccount(it.getString("username"), it.getString("password")) }
+    }
+    fun savePowerAccount(account: SchoolAccount) {
+        require(account.username.trim().length in 1..100 && account.password.length in 1..256)
+        write("power_account", JSONObject().put("username", account.username.trim()).put("password", account.password).toString())
+    }
+    fun removePowerAccount() { check(preferences.edit().remove("power_account").commit()) }
+    fun powerLink(): String? = read("power_link")?.takeIf(SchoolAccessPolicy::isPowerPage)
     fun savePowerLink(link: String) {
-        require(SchoolAccessPolicy.isSignedPowerLink(link)) { "这不是可识别的后勤授权查询链接。" }
+        require(link.length <= 8192 && SchoolAccessPolicy.isPowerPage(link)) { "这不是学校后勤水电查询链接。" }
         write("power_link", link.substringBefore('#'))
     }
     fun removePowerLink() { check(preferences.edit().remove("power_link").commit()) }

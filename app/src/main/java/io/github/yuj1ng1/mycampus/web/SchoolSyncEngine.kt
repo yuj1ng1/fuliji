@@ -29,7 +29,7 @@ class SchoolSyncEngine(private val context: Context, private val options: School
         var loading = true
         var generation = 0
         var failure: CaptureException? = null
-        val auth = SchoolLoginSession(context, options) { secrets.account() }
+        val auth = SchoolLoginSession(context, options, { secrets.account() }, { secrets.powerAccount() })
         view.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(web: WebView, request: WebResourceRequest): Boolean {
                 if (!request.isForMainFrame || WebPolicy.isSchoolUrl(request.url.toString())) return false
@@ -60,7 +60,7 @@ class SchoolSyncEngine(private val context: Context, private val options: School
                     failure?.let { throw it }
                     if (loading) { delay(500); continue }
                     val progress = auth.advance(view, source)
-                    if (progress.requiresUser) throw CaptureException(progress.message, "NEEDS_LOGIN")
+                    if (progress.requiresUser) throw CaptureException(progress.message, when (progress.state) { "CAPTCHA" -> "NEEDS_CAPTCHA"; "PHONE_REQUIRED" -> "NEEDS_PHONE_VERIFICATION"; else -> "NEEDS_LOGIN" })
                     if (progress.state != "NONE") { delay(700); continue }
                     val url = view.url.orEmpty()
                     val currentGeneration = generation
@@ -81,7 +81,7 @@ class SchoolSyncEngine(private val context: Context, private val options: School
                                     view.loadUrl(link)
                                     delay(500); continue
                                 }
-                                throw CaptureException("此页是后勤自身登录，不能使用教务密码；请通过企业微信接入。", "NEEDS_WECOM")
+                                throw CaptureException("学校仍要求手机号验证或绑定，请本人打开后勤连接确认，原有数据已保留。", "NEEDS_PHONE_VERIFICATION")
                             }
                             if (routedLoginBody) throw CaptureException("学校登录尚未完成，请本人确认。", "NEEDS_LOGIN")
                             routedLoginBody = true

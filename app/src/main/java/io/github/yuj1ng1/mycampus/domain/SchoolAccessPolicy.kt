@@ -38,6 +38,12 @@ object SchoolAccessPolicy {
             .firstOrNull(::isSignedPowerLink)?.substringBefore('#')
     }
 
+    fun extractPowerEntry(text: String): String? {
+        val candidates = Regex("https://[^\\s<>\"']+", RegexOption.IGNORE_CASE).findAll(text.take(16_384))
+        return candidates.map { it.value.replace("&amp;", "&").trimEnd(')', '）', '，', '。') }
+            .firstOrNull { it.length <= 8192 && isPowerPage(it) }?.substringBefore('#')
+    }
+
     fun credentialOrigin(url: String): String? = runCatching {
         if (!WebPolicy.isSchoolUrl(url)) return null
         val uri = URI(url)
@@ -48,6 +54,13 @@ object SchoolAccessPolicy {
             else -> null
         }
     }.getOrNull()
+
+    fun allowsPowerIdentityFields(url: String): Boolean = runCatching {
+        val uri = URI(url)
+        val query = parameters(url)
+        WebPolicy.isSchoolUrl(url) && uri.host.equals("hqwx.fjut.edu.cn", true) && uri.path == "/agent/app/index.php" &&
+            query["i"] == "67" && query["c"] == "entry" && query["do"] == "register" && query["m"] == "maihu_portal"
+    }.getOrDefault(false)
 
     fun isAcademicLocalLogin(url: String): Boolean = runCatching {
         val uri = URI(url)

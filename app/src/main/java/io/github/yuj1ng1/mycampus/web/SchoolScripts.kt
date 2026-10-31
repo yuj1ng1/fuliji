@@ -31,6 +31,13 @@ object SchoolScripts {
         return "(" + script + ")(" + config.toString() + ");"
     }
 
+    fun powerBinding(context: Context, account: SchoolAccount?): String {
+        val script = context.assets.open("power-binding.js").bufferedReader().use { it.readText() }
+        val config = JSONObject().put("inspectOnly", account == null)
+            .put("username", account?.username.orEmpty()).put("password", account?.password.orEmpty())
+        return "(" + script + ")(" + config.toString() + ");"
+    }
+
     fun sameAcademicScope(first: String, second: String): Boolean {
         fun identity(value: String) = Regex("(\\d{4})[-—](\\d{4}).*?第?([123])学期").find(value)?.groupValues?.drop(1)
         val one = identity(first)

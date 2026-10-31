@@ -37,6 +37,7 @@ class LiveSchoolProbeTest {
         assumeTrue(args.getString("live_probe") == "yes")
         val payload = ServerSocket(37991, 1, InetAddress.getByName("127.0.0.1")).use { server ->
             server.soTimeout = 90_000
+            println("SCHOOL_PROBE transportReady=true")
             server.accept().use { socket ->
                 socket.soTimeout = 10_000
                 val input = DataInputStream(socket.getInputStream())
@@ -45,12 +46,56 @@ class LiveSchoolProbeTest {
                 val bytes = ByteArray(size).also(input::readFully)
                 JSONObject(String(bytes, Charsets.UTF_8)).also {
                     require(it.optString("nonce") == args.getString("probe_nonce"))
+                    socket.getOutputStream().write(1)
+                    socket.getOutputStream().flush()
                 }
             }
         }
         val target = payload.optString("url", CampusSource.COURSES.entryUrl)
         require(WebPolicy.isSchoolUrl(target))
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        if (payload.optBoolean("hqInspect")) {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                lateinit var view: WebView
+                scenario.onActivity { activity ->
+                    view = WebView(activity).apply {
+                        io.github.yuj1ng1.mycampus.web.SchoolWebSettings.apply(this)
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(web: WebView, request: WebResourceRequest) = request.isForMainFrame && !WebPolicy.isSchoolUrl(request.url.toString())
+                        }
+                    }
+                    activity.setContentView(view); view.loadUrl(target)
+                }
+                try {
+                    var previous = ""
+                    var prefillDone = false
+                    repeat(60) {
+                        val shape = evaluate(scenario, view, """(function(){
+                            function nodes(selector){var result=[],all=document.querySelectorAll(selector);for(var i=0;i<all.length;i++){var e=all[i];result.push({tag:e.tagName,id:e.id,name:e.name||'',type:e.type||'',cls:e.className||'',placeholder:e.placeholder||'',visible:e.getBoundingClientRect().width>0});}return result;}
+                            var q=new URL(location.href).searchParams,route={};for(var key of ['i','c','a','do','m']){var v=q.get(key);if(v&&/^[a-z0-9_]{1,40}$/i.test(v))route[key]=v;}
+                            return JSON.stringify({host:location.hostname,path:location.pathname,route:route,inputs:nodes('input'),buttons:nodes('button,input[type=submit]'),forms:nodes('form'),power:!!document.querySelector('#picker-addr'),captcha:!!document.querySelector('input[name*=captcha],input[id*=captcha],input[name=verify]')});})();""")
+                        if (shape.toString() != previous) { println("HQ_INSPECT " + shape); previous = shape.toString() }
+                        if (payload.optBoolean("prefill") && shape.optJSONArray("inputs")?.let { fields ->
+                                (0 until fields.length()).any { fields.getJSONObject(it).optString("id") == "studentid" }
+                            } == true) {
+                            val state = evaluate(scenario, view, SchoolScripts.powerBinding(context,
+                                SchoolAccount(payload.getString("username"), payload.getString("password")))).getString("state")
+                            if (state != "phone_required") { Thread.sleep(700); return@repeat }
+                            val matches = evaluate(scenario, view, """JSON.stringify({match:document.querySelector('#studentid').value===""" + JSONObject.quote(payload.getString("username")) +
+                                "&&document.querySelector('#password').value===" + JSONObject.quote(payload.getString("password")) +
+                                "&&document.querySelector('#mobile').value===''&&document.querySelector('#code').value===''});")
+                            check(matches.getBoolean("match"))
+                            prefillDone = true
+                            println("HQ_PREFILL state=phone_required;identityFieldsMatch=true;phoneAndCodeUntouched=true")
+                            return@use
+                        }
+                        Thread.sleep(700)
+                    }
+                    check(!payload.optBoolean("prefill") || prefillDone) { "Visible identity form was not ready for prefill" }
+                } finally { scenario.onActivity { view.stopLoading(); view.destroy() } }
+            }
+            return
+        }
         if (payload.optBoolean("activity")) {
             val app = context.applicationContext as CampusApplication
             val temporaryAccount = payload.optString("username").isNotEmpty()

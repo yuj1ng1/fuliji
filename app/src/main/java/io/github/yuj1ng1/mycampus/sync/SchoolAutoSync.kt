@@ -41,7 +41,7 @@ class SchoolAutoSync(private val context: Context, private val repository: Campu
         refresh(onlyStale = true)
     }
 
-    suspend fun refresh(only: CampusSource? = null, onlyStale: Boolean = false) {
+    suspend fun refresh(only: CampusSource? = null, onlyStale: Boolean = false, requestedScope: String? = null) {
         if (SchoolBrowserLease.active || !mutex.tryLock()) return
         try {
             val snapshots = repository.snapshots.first()
@@ -51,10 +51,10 @@ class SchoolAutoSync(private val context: Context, private val repository: Campu
             var updated = 0
             var attention = 0
             for (source in targets) {
-                val previous = snapshots.firstOrNull { it.source == source.name }
+                val previous = snapshots.firstOrNull { it.source == source.name && (requestedScope == null || it.scope == requestedScope) }
                 if (onlyStale && previous != null && System.currentTimeMillis() - previous.capturedAt < 30 * 60_000L) continue
                 try {
-                    val capture = engine.fetch(source, previous?.scope)
+                    val capture = engine.fetch(source, requestedScope ?: previous?.scope)
                     if (SchoolBrowserLease.active) break
                     repository.saveCapture(source, capture)
                     updated++

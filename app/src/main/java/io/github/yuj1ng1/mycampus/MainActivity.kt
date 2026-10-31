@@ -118,7 +118,7 @@ private fun CampusApp(repository: CampusRepository) {
                     onCourses = { tab = 1 }, onConnectCourses = { CampusWebActivity.open(context, CampusSource.COURSES) },
                     onPower = { detail = CampusSource.POWER }, onLedger = { tab = 3 },
                     onExam = { detail = CampusSource.EXAMS }, onGrades = { detail = CampusSource.GRADES }, onCalendar = { showCalendar = true })
-                1 -> SnapshotScreen(CampusSource.COURSES, snapshots, connections)
+                1 -> CourseScheduleScreen(snapshots, connections, today)
                 2 -> LazyColumn(
                     contentPadding = PaddingValues(20.dp, 10.dp, 20.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -326,9 +326,9 @@ private fun PowerScreen(snapshots: List<SavedSnapshot>, connections: List<Connec
         }
         item { PowerUsageCard(power, usage, today, room) }
         item {
-            OutlinedButton(onClick = { showPowerAccess = true }, modifier = Modifier.fillMaxWidth()) { Text("企业微信后勤接入 / 重新授权") }
+            OutlinedButton(onClick = { showPowerAccess = true }, modifier = Modifier.fillMaxWidth()) { Text("后勤登录与连接") }
         }
-        if (saved.isEmpty()) item { Text("后勤使用独立授权。若网页空白或要求未知密码，请从上方进入企业微信接入；不要填写教务密码。",
+        if (saved.isEmpty()) item { Text("首次使用请连接后勤，可用独立后勤账号登录，也可从企业微信进入。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

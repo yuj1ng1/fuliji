@@ -111,7 +111,7 @@ fun SchoolConnectionSettings(app: CampusApplication, onDismiss: () -> Unit) {
                 Text(progress.message, style = MaterialTheme.typography.bodySmall)
                 if (message.isNotEmpty()) Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 HorizontalDivider()
-                Text("后勤使用企业微信独立授权，首次接入可能需要本人操作。验证码不自动处理。课程/考试提醒、低电量提醒、账本导出和自动入账尚未提供。",
+                Text("后勤账号与教务分开，请从“后勤登录与连接”设置。验证码需本人填写。课程/考试提醒、低电量提醒、账本导出和自动入账尚未提供。",
                     style = MaterialTheme.typography.bodySmall)
             }
         },

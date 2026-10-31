@@ -1,0 +1,172 @@
+package io.github.yuj1ng1.mycampus.ui
+
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.yuj1ng1.mycampus.CampusApplication
+import io.github.yuj1ng1.mycampus.data.*
+import io.github.yuj1ng1.mycampus.domain.*
+import io.github.yuj1ng1.mycampus.web.CampusWebActivity
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
+@Composable
+fun CourseScheduleScreen(snapshots: List<SavedSnapshot>, connections: List<ConnectionState>, today: LocalDate) {
+    val app = LocalContext.current.applicationContext as CampusApplication
+    val context = LocalContext.current
+    val progress by app.schoolSync.progress.collectAsStateWithLifecycle()
+    val saved = snapshots.filter { it.source == CampusSource.COURSES.name }
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val snapshot = saved.firstOrNull { it.id == selectedId } ?: saved.firstOrNull()
+    var chooseTerm by remember { mutableStateOf(false) }
+    val connection = connections.firstOrNull { it.source == CampusSource.COURSES.name }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                TextButton(onClick = { chooseTerm = true }, enabled = saved.size > 1) { Text(snapshot?.scope ?: "我的课表", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                DropdownMenu(chooseTerm, { chooseTerm = false }) {
+                    saved.forEach { item -> DropdownMenuItem(text = { Text(item.scope) }, onClick = { selectedId = item.id; chooseTerm = false }) }
+                }
+            }
+            TextButton(onClick = { CampusWebActivity.open(context, CampusSource.COURSES) }, modifier = Modifier.testTag("connect-COURSES")) { Text("学校查询") }
+            TextButton(onClick = { app.applicationScope.launch { app.schoolSync.refresh(CampusSource.COURSES, requestedScope = snapshot?.scope) } }, enabled = !progress.running) { Text(if (progress.running) "更新中" else "更新") }
+        }
+        if (connection != null && connection.state != "SUCCESS") Text(connection.message + if (snapshot != null) "，显示上次保存课表。" else "",
+            Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        if (snapshot == null) {
+            Card(Modifier.fillMaxWidth().padding(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("还没有课表", fontWeight = FontWeight.SemiBold)
+                    Text("先从学校查询读取并保存，课表会按教学周显示在这里。", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        } else {
+            CourseWeekView(snapshot, today, Modifier.weight(1f))
+        }
+    }
+}
+
+private val courseColors = listOf(Color(0xFFEAF1FF), Color(0xFFE7F5F0), Color(0xFFFFF2DE), Color(0xFFF1ECFF), Color(0xFFFFEDEE), Color(0xFFE8F5FC))
+
+@Composable
+fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier = Modifier) {
+    val schedule = remember(snapshot.payload) { CourseSchedules.read(CaptureReader.decode(snapshot.payload)) }
+    val term = remember(snapshot.scope) { CourseSchedules.term(snapshot.scope) }
+    val weekCount = CourseSchedules.weekCount(term, schedule)
+    val currentWeek = term?.weekOn(today)
+    var week by rememberSaveable(snapshot.id) { mutableIntStateOf((currentWeek ?: 1).coerceIn(1, weekCount)) }
+    var listView by rememberSaveable(snapshot.id) { mutableStateOf(false) }
+    var chooseWeek by remember { mutableStateOf(false) }
+    var detail by remember { mutableStateOf<ScheduledCourse?>(null) }
+    LaunchedEffect(weekCount) { week = week.coerceIn(1, weekCount) }
+    val active = schedule.forWeek(week)
+    val monday = CourseSchedules.monday(term, week)
+    val sectionCount = maxOf(10, active.maxOfOrNull { it.lastSection } ?: 10)
+    Column(modifier.fillMaxWidth().testTag("course-week-view")) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { week-- }, enabled = week > 1, modifier = Modifier.testTag("previous-week")) { Text("‹", fontSize = 25.sp) }
+            Box(Modifier.weight(1f)) {
+                TextButton(onClick = { chooseWeek = true }) {
+                    Column {
+                        Text("第${week}周", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(monday?.let { it.format(DateTimeFormatter.ofPattern("M.d")) + " — " + it.plusDays(6).format(DateTimeFormatter.ofPattern("M.d")) }
+                            ?: "教学周日期待配置", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    }
+                }
+                DropdownMenu(chooseWeek, { chooseWeek = false }) {
+                    for (value in 1..weekCount) DropdownMenuItem(text = { Text("第${value}周") }, onClick = { week = value; chooseWeek = false })
+                }
+            }
+            TextButton(onClick = { week = (currentWeek ?: 1).coerceIn(1, weekCount) }, enabled = currentWeek != null) { Text("本周") }
+            TextButton(onClick = { listView = !listView }, modifier = Modifier.testTag("course-list-toggle")) { Text(if (listView) "周表" else "列表") }
+            TextButton(onClick = { week++ }, enabled = week < weekCount, modifier = Modifier.testTag("next-week")) { Text("›", fontSize = 25.sp) }
+        }
+        Text("本周 ${active.size} 次课程 · 点击查看详情", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+        if (!listView) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            Spacer(Modifier.width(28.dp))
+            for (day in 1..7) {
+                val date = monday?.plusDays(day - 1L)
+                val highlight = date == today
+                Column(Modifier.weight(1f).padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("一二三四五六日"[day - 1].toString(), fontSize = 12.sp, color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
+                    Text(date?.dayOfMonth?.toString() ?: "", modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(if (highlight) MaterialTheme.colorScheme.primary else Color.Transparent).padding(horizontal = 7.dp, vertical = 3.dp),
+                        color = if (highlight) Color.White else MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            if (listView) {
+                active.sortedWith(compareBy({ it.day }, { it.firstSection })).forEach { course ->
+                    Card(onClick = { detail = course }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(course.name, fontWeight = FontWeight.SemiBold)
+                            Text("周" + "一二三四五六日"[course.day - 1] + " · ${course.firstSection}—${course.lastSection}节", style = MaterialTheme.typography.bodySmall)
+                            Text(course.details.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                    Column(Modifier.width(28.dp)) {
+                        for (section in 1..sectionCount) Box(Modifier.height(66.dp).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                            Text(section.toString(), Modifier.padding(top = 7.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+                    val placements = CourseSchedules.place(active)
+                    for (day in 1..7) BoxWithConstraints(Modifier.weight(1f).height((sectionCount * 66).dp).border(0.5.dp, Color(0xFFEDF0F6))) {
+                        val width = maxWidth
+                        for (section in 1 until sectionCount) HorizontalDivider(Modifier.offset(y = (section * 66).dp), color = Color(0xFFEDF0F6), thickness = 0.5.dp)
+                        placements.filter { it.course.day == day }.forEach { placement ->
+                            val course = placement.course
+                            val color = courseColors[Math.floorMod(course.name.hashCode(), courseColors.size)]
+                            Surface(onClick = { detail = course }, shape = RoundedCornerShape(7.dp), color = color,
+                                modifier = Modifier.offset(x = width * placement.lane / placement.lanes, y = ((course.firstSection - 1) * 66).dp)
+                                    .width(width / placement.lanes).height(((course.lastSection - course.firstSection + 1) * 66).dp).padding(2.dp)
+                                    .semantics { contentDescription = "周" + "一二三四五六日"[day - 1] + "，${course.firstSection}至${course.lastSection}节，" + course.name }) {
+                                Column(Modifier.padding(horizontal = 4.dp, vertical = 7.dp)) {
+                                    Text(course.name, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                                    Spacer(Modifier.height(6.dp))
+                                    if (course.details.isNotEmpty()) Text(course.details.first(), fontSize = 9.sp, lineHeight = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, color = Color(0xFF59677E))
+                                    if (placement.lanes > 1) Text("同节多课", fontSize = 8.sp, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (active.isEmpty()) Text("本周没有固定节次的课程", Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
+            if (schedule.unscheduled.isNotEmpty()) {
+                Text("实践与待核对课程", Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp), fontWeight = FontWeight.SemiBold)
+                schedule.unscheduled.forEach { row ->
+                    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Column(Modifier.padding(14.dp)) { Text(row.title, fontWeight = FontWeight.SemiBold); Text(row.detail, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+            Text("保存于 " + java.time.Instant.ofEpochMilli(snapshot.capturedAt).atZone(SchoolCalendar.zone).format(DateTimeFormatter.ofPattern("MM-dd HH:mm")), Modifier.padding(20.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+        }
+    }
+    detail?.let { course -> AlertDialog(onDismissRequest = { detail = null }, title = { Text(course.name) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("星期" + "一二三四五六日"[course.day - 1] + " · ${course.firstSection}—${course.lastSection}节")
+            Text(course.weekRule)
+            course.details.forEach { Text(it) }
+        } }, confirmButton = { TextButton(onClick = { detail = null }) { Text("关闭") } }) }
+}

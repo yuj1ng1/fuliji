@@ -50,4 +50,5 @@ class CampusRepository(private val database: CampusDatabase) {
     suspend fun deleteEntry(id: String) = dao.deleteEntry(id)
 
     suspend fun clearCampusCache() = database.withTransaction { dao.clearSnapshots(); dao.clearConnections() }
+    suspend fun clearPowerCache() = database.withTransaction { dao.clearPowerSnapshots(); dao.clearPowerConnections() }
 }

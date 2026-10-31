@@ -36,4 +36,20 @@ class SchoolAccessPolicyTest {
         assertNull(SchoolAccessPolicy.extractPowerLink("普通后勤入口 " + page))
         assertNull(SchoolAccessPolicy.extractPowerLink("https://example.com/?return=" + signed.replace(":", "%3A")))
     }
+
+    @Test fun ordinaryPowerEntryCanOpenLoginWithoutTemporarySignature() {
+        assertEquals(page, SchoolAccessPolicy.extractPowerEntry("水电查询 " + page + "#tab4"))
+        assertEquals(page, SchoolAccessPolicy.extractPowerEntry(page.replace("&", "&amp;")))
+        assertNull(SchoolAccessPolicy.extractPowerEntry(page.replace("https:", "http:")))
+        assertNull(SchoolAccessPolicy.extractPowerEntry(page + "&do=other"))
+    }
+
+    @Test fun independentPowerIdentityFieldsAreLimitedToTheVerifiedMobileBindingPage() {
+        val binding = "https://hqwx.fjut.edu.cn/agent/app/index.php?i=67&c=entry&do=register&m=maihu_portal"
+        assertTrue(SchoolAccessPolicy.allowsPowerIdentityFields(binding))
+        listOf(page, binding.replace("register", "other"), binding.replace("hqwx.fjut.edu.cn", "example.com"),
+            binding + "&do=register", "https://hqwx.fjut.edu.cn/agent/web/index.php?c=user&a=login").forEach {
+            assertFalse(SchoolAccessPolicy.allowsPowerIdentityFields(it))
+        }
+    }
 }
