@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import io.github.yuj1ng1.mycampus.data.*
 import io.github.yuj1ng1.mycampus.domain.*
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -98,8 +99,12 @@ fun CampusDashboard(
     onExam: () -> Unit,
     onGrades: () -> Unit,
     onCalendar: () -> Unit,
+    now: LocalTime = LocalTime.now(SchoolCalendar.zone),
+    homeCourseMode: HomeCourseMode = HomeCourseMode.TODAY,
+    onHomeCourseModeChange: (HomeCourseMode) -> Unit = {},
 ) {
-    val course = snapshots.firstOrNull { it.source == CampusSource.COURSES.name }
+    val course = snapshots.firstOrNull { it.source == CampusSource.COURSES.name && CourseSchedules.term(it.scope)?.weekOn(today) != null }
+        ?: snapshots.firstOrNull { it.source == CampusSource.COURSES.name }
     val powerRoom = snapshots.firstOrNull { it.source in setOf(CampusSource.POWER.name, CampusSource.POWER_USAGE.name) }?.scope
     val power = snapshots.firstOrNull { it.source == CampusSource.POWER.name && it.scope == powerRoom }
     val usage = snapshots.firstOrNull { it.source == CampusSource.POWER_USAGE.name && it.scope == powerRoom }
@@ -121,26 +126,7 @@ fun CampusDashboard(
             }
         }
         item {
-            Card(onClick = onCourses, colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(18.dp)) {
-                Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
-                    SectionLine("我的课表", CampusIcons.Calendar, if (course == null) "未连接" else "查看课表")
-                    if (course == null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("还没有保存课表", style = MaterialTheme.typography.titleMedium)
-                                Text("连接教务，课表随时可看", Modifier.padding(top = 3.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
-                            }
-                            Button(onClick = onConnectCourses, shape = RoundedCornerShape(9.dp),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp), modifier = Modifier.height(36.dp)) {
-                                Text("连接教务", style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-                    } else {
-                        Text(course.scope, style = MaterialTheme.typography.bodySmall, color = Muted)
-                        Text("已保存 " + course.itemCount + " 条课程记录", style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
+            HomeCourseCard(course, today, now, homeCourseMode, onHomeCourseModeChange, onCourses, onConnectCourses)
         }
         item { PowerUsageCard(power, usage, today, powerRoom, onPower) }
         item {
@@ -269,16 +255,6 @@ private fun UsageChart(series: List<DailyUsage>) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SectionLine(title: String, icon: ImageVector, trailing: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(18.dp), tint = Blue)
-        Text(title, Modifier.weight(1f).padding(start = 7.dp), style = MaterialTheme.typography.titleSmall)
-        Text(trailing, style = MaterialTheme.typography.labelMedium, color = Muted)
-        Icon(CampusIcons.Arrow, null, Modifier.padding(start = 3.dp).size(13.dp), tint = Muted)
     }
 }
 

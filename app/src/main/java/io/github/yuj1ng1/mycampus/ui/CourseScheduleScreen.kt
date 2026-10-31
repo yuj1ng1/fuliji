@@ -103,7 +103,7 @@ fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier
             headerActions()
         }
         if (!listView) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-            Spacer(Modifier.width(28.dp))
+            Spacer(Modifier.width(42.dp))
             for (day in 1..7) {
                 val date = monday?.plusDays(day - 1L)
                 val highlight = date == today
@@ -123,16 +123,20 @@ fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier
                     Card(onClick = { detail = course }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                         Column(Modifier.padding(14.dp)) {
                             Text(course.name, fontWeight = FontWeight.SemiBold)
-                            Text("周" + "一二三四五六日"[course.day - 1] + " · ${course.firstSection}—${course.lastSection}节", style = MaterialTheme.typography.bodySmall)
+                            Text("周" + "一二三四五六日"[course.day - 1] + " · ${course.firstSection}—${course.lastSection}节 · " + CourseTimes.label(course.firstSection, course.lastSection), style = MaterialTheme.typography.bodySmall)
                             Text(course.details.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
             } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                    Column(Modifier.width(28.dp)) {
-                        for (section in 1..sectionCount) Box(Modifier.height(sectionHeight).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                            Text(section.toString(), Modifier.padding(top = 7.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                    Column(Modifier.width(42.dp)) {
+                        for (section in 1..sectionCount) Column(Modifier.height(sectionHeight).fillMaxWidth().padding(top = 4.dp).testTag("section-time-$section"), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(section.toString(), fontSize = 11.sp, lineHeight = 14.sp, color = MaterialTheme.colorScheme.secondary)
+                            CourseTimes.section(section)?.let { time ->
+                                Text(CourseTimes.label(time.start), fontSize = 9.sp, lineHeight = 10.sp, color = MaterialTheme.colorScheme.secondary)
+                                Text(CourseTimes.label(time.end), fontSize = 9.sp, lineHeight = 10.sp, color = MaterialTheme.colorScheme.secondary)
+                            } ?: Text("待补充", fontSize = 8.sp, color = MaterialTheme.colorScheme.secondary)
                         }
                     }
                     val placements = CourseSchedules.place(active)
@@ -173,6 +177,7 @@ fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier
     detail?.let { course -> AlertDialog(onDismissRequest = { detail = null }, title = { Text(course.name) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("星期" + "一二三四五六日"[course.day - 1] + " · ${course.firstSection}—${course.lastSection}节")
+            Text(CourseTimes.label(course.firstSection, course.lastSection))
             Text(course.weekRule)
             course.details.forEach { Text(it) }
         } }, confirmButton = { TextButton(onClick = { detail = null }) { Text("关闭") } }) }

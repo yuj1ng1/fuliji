@@ -39,6 +39,8 @@ class CourseWeekUiTest {
     @Test fun switchingWeekFiltersParityAndDetailsPreserveTeacherAndRoom() {
         ui.setContent { CampusTheme { CourseWeekView(snapshot, today, Modifier.fillMaxSize()) } }
         ui.onNodeWithText("第8周").assertIsDisplayed()
+        ui.onNodeWithText("08:20").assertIsDisplayed()
+        ui.onNodeWithText("17:35").assertIsDisplayed()
         ui.onNodeWithText("偶数周课程").assertExists()
         ui.onNodeWithText("奇数周课程").assertDoesNotExist()
         ui.onNodeWithTag("next-week").performClick()
@@ -82,6 +84,9 @@ class CourseWeekUiTest {
             }
         } }
         val viewport = ui.onNodeWithTag("course-grid-viewport").getUnclippedBoundsInRoot()
+        ui.onNodeWithText("08:20").assertIsDisplayed()
+        val lastTime = ui.onNodeWithText("17:35").getUnclippedBoundsInRoot()
+        assertTrue("Section 8 end time must be fully visible", lastTime.bottom <= viewport.bottom + 1.dp)
         for (block in 0..3) {
             val node = ui.onNodeWithContentDescription("周一，${block * 2 + 1}至${block * 2 + 2}节，合成日间第${block + 1}段")
             node.assertIsDisplayed()
@@ -92,6 +97,8 @@ class CourseWeekUiTest {
         assertTrue(evening.getUnclippedBoundsInRoot().top >= viewport.bottom - 1.dp)
         ui.onNodeWithTag("course-grid-viewport").performTouchInput { swipeUp() }
         evening.assertIsDisplayed()
+        ui.onNodeWithText("19:25").assertIsDisplayed()
+        ui.onNodeWithText("20:10").assertIsDisplayed()
         ui.onNodeWithTag("course-more").performClick()
         ui.onNodeWithText("更新此学期").assertIsDisplayed()
     }

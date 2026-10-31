@@ -6,6 +6,7 @@ import io.github.yuj1ng1.mycampus.data.CampusDatabase
 import io.github.yuj1ng1.mycampus.data.CampusRepository
 import io.github.yuj1ng1.mycampus.data.SchoolPreferences
 import io.github.yuj1ng1.mycampus.data.SchoolSecrets
+import io.github.yuj1ng1.mycampus.data.UiPreferences
 import io.github.yuj1ng1.mycampus.sync.SchoolAutoSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ class CampusApplication : Application() {
     val repository by lazy { CampusRepository(database) }
     val schoolOptions by lazy { SchoolPreferences(this) }
     val schoolSecrets by lazy { SchoolSecrets(this) }
+    val uiOptions by lazy { UiPreferences(this) }
     val schoolSync by lazy { SchoolAutoSync(this, repository, schoolOptions, schoolSecrets) }
     override fun onCreate() { super.onCreate(); schoolSync.configureSchedule() }
 }

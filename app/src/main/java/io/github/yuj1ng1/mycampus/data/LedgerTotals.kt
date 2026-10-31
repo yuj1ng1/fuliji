@@ -6,10 +6,29 @@ import java.math.BigInteger
 import java.time.Instant
 import java.time.LocalDate
 
-fun expenseTotal(entries: List<LedgerEntry>, date: LocalDate): String {
-    val total = entries.asSequence().filter {
-        it.status == "CONFIRMED" && it.kind == "EXPENSE" && it.amountCents != null &&
-            Instant.ofEpochMilli(it.occurredAt).atZone(SchoolCalendar.zone).toLocalDate() == date
-    }.fold(BigInteger.ZERO) { sum, item -> sum + BigInteger.valueOf(requireNotNull(item.amountCents)) }
-    return BigDecimal(total, 2).toPlainString()
+data class DailySpending(val date: LocalDate, val cents: BigInteger) {
+    val yuan: String get() = BigDecimal(cents, 2).toPlainString()
+}
+
+private fun spendingByDate(entries: List<LedgerEntry>): Map<LocalDate, BigInteger> {
+    val totals = mutableMapOf<LocalDate, BigInteger>()
+    entries.asSequence().filter { it.status == "CONFIRMED" && it.kind == "EXPENSE" && (it.amountCents ?: 0L) > 0L }.forEach { entry ->
+        val date = Instant.ofEpochMilli(entry.occurredAt).atZone(SchoolCalendar.zone).toLocalDate()
+        totals[date] = (totals[date] ?: BigInteger.ZERO) + BigInteger.valueOf(requireNotNull(entry.amountCents))
+    }
+    return totals
+}
+
+fun expenseTotal(entries: List<LedgerEntry>, date: LocalDate): String = BigDecimal(spendingByDate(entries)[date] ?: BigInteger.ZERO, 2).toPlainString()
+
+fun monthlyExpenseTotal(entries: List<LedgerEntry>, today: LocalDate): String {
+    val start = today.withDayOfMonth(1)
+    val cents = spendingByDate(entries).asSequence().filter { it.key in start..today }.fold(BigInteger.ZERO) { sum, day -> sum + day.value }
+    return BigDecimal(cents, 2).toPlainString()
+}
+
+/** Seven local accounting dates including today; zero means no confirmed local spending entries. */
+fun lastSevenDaysSpending(entries: List<LedgerEntry>, today: LocalDate): List<DailySpending> {
+    val byDate = spendingByDate(entries)
+    return (6L downTo 0L).map { offset -> today.minusDays(offset).let { DailySpending(it, byDate[it] ?: BigInteger.ZERO) } }
 }

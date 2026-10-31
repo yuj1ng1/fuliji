@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.yuj1ng1.mycampus"
         minSdk = 31
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.1.4-m0"
+        versionCode = 6
+        versionName = "0.1.5-m0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }

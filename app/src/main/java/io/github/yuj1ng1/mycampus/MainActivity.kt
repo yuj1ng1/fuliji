@@ -59,6 +59,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
@@ -89,13 +90,16 @@ private fun CampusApp(repository: CampusRepository) {
     var addExpense by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<LedgerEntry?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var today by remember { mutableStateOf(LocalDate.now(SchoolCalendar.zone)) }
+    var clock by remember { mutableStateOf(ZonedDateTime.now(SchoolCalendar.zone)) }
+    val today = clock.toLocalDate()
+    val currentTime = clock.toLocalTime()
+    val homeCourseMode by app.uiOptions.homeCourseMode.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { app.applicationScope.launch { app.schoolSync.onForeground() } }
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
-                today = LocalDate.now(SchoolCalendar.zone)
+                clock = ZonedDateTime.now(SchoolCalendar.zone)
                 app.applicationScope.launch { app.schoolSync.onForeground() }
                 delay(60_000)
             }
@@ -118,7 +122,10 @@ private fun CampusApp(repository: CampusRepository) {
                 0 -> CampusDashboard(today, snapshots, ledger,
                     onCourses = { tab = 1 }, onConnectCourses = { CampusWebActivity.open(context, CampusSource.COURSES) },
                     onPower = { detail = CampusSource.POWER }, onLedger = { tab = 3 },
-                    onExam = { detail = CampusSource.EXAMS }, onGrades = { detail = CampusSource.GRADES }, onCalendar = { showCalendar = true })
+                    onExam = { detail = CampusSource.EXAMS }, onGrades = { detail = CampusSource.GRADES }, onCalendar = { showCalendar = true },
+                    now = currentTime, homeCourseMode = homeCourseMode, onHomeCourseModeChange = { mode ->
+                        try { app.uiOptions.chooseHomeCourseMode(mode) } catch (_: Exception) { error = "首页样式未保存，请重试。" }
+                    })
                 1 -> CourseScheduleScreen(snapshots, connections, today)
                 2 -> LazyColumn(
                     contentPadding = PaddingValues(20.dp, 10.dp, 20.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -134,15 +141,7 @@ private fun CampusApp(repository: CampusRepository) {
                     modifier = Modifier.testTag("ledger"),
                     contentPadding = PaddingValues(20.dp, 10.dp, 20.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    item {
-                        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                            Column(Modifier.fillMaxWidth().padding(20.dp)) {
-                                Text("今日已确认支出", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                                Text("¥ " + expenseTotal(ledger, today), Modifier.padding(top = 7.dp), style = MaterialTheme.typography.headlineLarge)
-                                if (drafts > 0) Text(drafts.toString() + " 笔支付通知待确认，不计入支出", Modifier.padding(top = 12.dp))
-                            }
-                        }
-                    }
+                    item { LedgerSummaryCard(ledger, today) }
                     item { NotificationAccessCard() }
                     item {
                         FilledTonalButton(onClick = { addExpense = true }, modifier = Modifier.fillMaxWidth()) {

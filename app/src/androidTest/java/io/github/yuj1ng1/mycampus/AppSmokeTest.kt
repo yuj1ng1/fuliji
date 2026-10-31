@@ -25,6 +25,8 @@ class AppSmokeTest {
 
     @Test fun invalidMoneyCannotBeSavedAndEntryCanBeCancelled() {
         ui.onNodeWithTag("tab-3").performClick()
+        ui.onNodeWithText("本月支出").assertIsDisplayed()
+        ui.onNodeWithText("近7天消费").assertIsDisplayed()
         ui.onNodeWithTag("add-expense").performClick()
         ui.onNodeWithTag("expense-amount").performTextInput("1.001")
         ui.onNodeWithTag("save-expense").assertIsNotEnabled()
