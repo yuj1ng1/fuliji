@@ -105,8 +105,8 @@ private fun CampusApp(repository: CampusRepository) {
 
     Scaffold(
         topBar = {
-            CampusHeader(if (tab == 0) "榕集" else tabs[tab], "福建理工大学",
-                onSettings = { showSettings = true }, onAdd = if (tab == 3) ({ addExpense = true }) else null)
+            CampusHeader(if (tab == 0) "福理集" else tabs[tab], if (tab == 1) "" else "福建理工大学",
+                onSettings = { showSettings = true }, onAdd = if (tab == 3) ({ addExpense = true }) else null, compact = tab == 1)
         },
         bottomBar = {
             CampusBottomBar(tab) { tab = it }

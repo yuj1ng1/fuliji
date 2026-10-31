@@ -7,6 +7,7 @@ import io.github.yuj1ng1.mycampus.data.SchoolAccount
 import io.github.yuj1ng1.mycampus.data.SchoolPreferences
 import io.github.yuj1ng1.mycampus.domain.*
 import java.net.URI
+import org.json.JSONObject
 
 data class AuthProgress(val state: String, val message: String = "") {
     val requiresUser get() = state in setOf("LOGIN_REQUIRED", "CAPTCHA", "REJECTED", "PHONE_REQUIRED")
@@ -22,10 +23,15 @@ class SchoolLoginSession(
     private val submitted = mutableMapOf<String, Long>()
     private var routedToSso = false
     private var routedFromPortal = false
+    var powerViewport: JSONObject? = null
+        private set
     fun reset() { submitted.clear(); routedToSso = false; routedFromPortal = false }
 
     suspend fun advance(view: WebView, source: CampusSource): AuthProgress {
         val url = view.url.orEmpty()
+        if (!source.isAcademic && WebPolicy.isSchoolUrl(url)) {
+            powerViewport = SchoolScripts.evaluate(view, SchoolScripts.powerViewport(context))
+        }
         if (!source.isAcademic && SchoolAccessPolicy.allowsPowerIdentityFields(url)) {
             val state = SchoolScripts.evaluate(view, SchoolScripts.powerBinding(context, null)).optString("state")
             if (state == "phone_required") {

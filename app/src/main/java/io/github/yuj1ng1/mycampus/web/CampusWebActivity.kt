@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -135,7 +136,7 @@ class CampusWebActivity : ComponentActivity() {
                         if (loading || saving) LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                 }) { padding ->
-                    AndroidView(factory = { schoolView }, modifier = Modifier.fillMaxSize().padding(padding))
+                    AndroidView(factory = { schoolView }, modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding().testTag("school-web-view"))
                 }
                 BackHandler { if (schoolView.canGoBack()) schoolView.goBack() else finish() }
                 if (powerAccess) PowerAccessDialog(app,
@@ -144,7 +145,7 @@ class CampusWebActivity : ComponentActivity() {
                     onDismissRequest = { showDiagnostics = false }, title = { Text("连接诊断") },
                     text = { Text("仅包含页面状态和数量，不包含账号、课程内容、Cookie或授权链接。\n\n" + diagnostics, style = MaterialTheme.typography.bodySmall) },
                     confirmButton = { TextButton(onClick = {
-                        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("榕集连接诊断", diagnostics))
+                        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("福理集连接诊断", diagnostics))
                         showDiagnostics = false
                     }) { Text("复制诊断") } },
                     dismissButton = { TextButton(onClick = { showDiagnostics = false }) { Text("返回") } },
@@ -177,6 +178,7 @@ class CampusWebActivity : ComponentActivity() {
             if (progress.state != "NONE") {
                 resultPage = false
                 message = progress.message
+                diagnostics = diagnosticInfo(progress.state).toString(2)
                 if (progress.state == "PHONE_REQUIRED") fail("NEEDS_PHONE_VERIFICATION", progress.message)
                 return
             }
@@ -190,9 +192,7 @@ class CampusWebActivity : ComponentActivity() {
             val root = withTimeout(10_000) { SchoolScripts.evaluate(schoolView, SchoolScripts.capture(this@CampusWebActivity, source)) }
             if (generation != navigationGeneration || schoolView.url != url || isFinishing) return
             val state = root.optString("status")
-            val info = JSONObject().put("app", BuildConfig.VERSION_NAME).put("source", source.name)
-                .put("host", host).put("webView", WebView.getCurrentWebViewPackage()?.versionName.orEmpty())
-                .put("status", state).put("counts", root.optJSONObject("diagnostics") ?: JSONObject())
+            val info = diagnosticInfo(state).put("counts", root.optJSONObject("diagnostics") ?: JSONObject())
             diagnostics = info.toString(2)
             if (state == "login") {
                 resultPage = false
@@ -244,6 +244,11 @@ class CampusWebActivity : ComponentActivity() {
         fatalPageError = true
         fail(state, text)
     }
+
+    private fun diagnosticInfo(state: String) = JSONObject().put("app", BuildConfig.VERSION_NAME).put("source", source.name)
+        .put("host", host).put("webView", WebView.getCurrentWebViewPackage()?.versionName.orEmpty()).put("status", state)
+        .put("viewWidth", schoolView.width).put("viewHeight", schoolView.height)
+        .put("pageLayout", login.powerViewport ?: JSONObject())
 
     private fun fail(state: String, text: String) {
         message = text

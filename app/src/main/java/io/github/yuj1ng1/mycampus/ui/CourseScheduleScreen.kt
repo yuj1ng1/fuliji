@@ -35,19 +35,9 @@ fun CourseScheduleScreen(snapshots: List<SavedSnapshot>, connections: List<Conne
     val saved = snapshots.filter { it.source == CampusSource.COURSES.name }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     val snapshot = saved.firstOrNull { it.id == selectedId } ?: saved.firstOrNull()
-    var chooseTerm by remember { mutableStateOf(false) }
+    var more by remember { mutableStateOf(false) }
     val connection = connections.firstOrNull { it.source == CampusSource.COURSES.name }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                TextButton(onClick = { chooseTerm = true }, enabled = saved.size > 1) { Text(snapshot?.scope ?: "我的课表", maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                DropdownMenu(chooseTerm, { chooseTerm = false }) {
-                    saved.forEach { item -> DropdownMenuItem(text = { Text(item.scope) }, onClick = { selectedId = item.id; chooseTerm = false }) }
-                }
-            }
-            TextButton(onClick = { CampusWebActivity.open(context, CampusSource.COURSES) }, modifier = Modifier.testTag("connect-COURSES")) { Text("学校查询") }
-            TextButton(onClick = { app.applicationScope.launch { app.schoolSync.refresh(CampusSource.COURSES, requestedScope = snapshot?.scope) } }, enabled = !progress.running) { Text(if (progress.running) "更新中" else "更新") }
-        }
         if (connection != null && connection.state != "SUCCESS") Text(connection.message + if (snapshot != null) "，显示上次保存课表。" else "",
             Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
         if (snapshot == null) {
@@ -55,10 +45,23 @@ fun CourseScheduleScreen(snapshots: List<SavedSnapshot>, connections: List<Conne
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("还没有课表", fontWeight = FontWeight.SemiBold)
                     Text("先从学校查询读取并保存，课表会按教学周显示在这里。", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = { CampusWebActivity.open(context, CampusSource.COURSES) }, modifier = Modifier.testTag("connect-COURSES")) { Text("学校查询") }
                 }
             }
         } else {
-            CourseWeekView(snapshot, today, Modifier.weight(1f))
+            CourseWeekView(snapshot, today, Modifier.weight(1f), headerActions = {
+                Box {
+                    IconButton(onClick = { more = true }, modifier = Modifier.size(40.dp).testTag("course-more")) { Text("⋮", fontSize = 24.sp) }
+                    DropdownMenu(more, { more = false }) {
+                        DropdownMenuItem(text = { Text(snapshot.scope) }, enabled = false, onClick = {})
+                        DropdownMenuItem(text = { Text("学校查询") }, modifier = Modifier.testTag("connect-COURSES"), onClick = { more = false; CampusWebActivity.open(context, CampusSource.COURSES) })
+                        DropdownMenuItem(text = { Text(if (progress.running) "正在更新…" else "更新此学期") }, enabled = !progress.running, onClick = {
+                            more = false; app.applicationScope.launch { app.schoolSync.refresh(CampusSource.COURSES, requestedScope = snapshot.scope) }
+                        })
+                        if (saved.size > 1) saved.forEach { item -> DropdownMenuItem(text = { Text(item.scope) }, onClick = { selectedId = item.id; more = false }) }
+                    }
+                }
+            })
         }
     }
 }
@@ -66,7 +69,7 @@ fun CourseScheduleScreen(snapshots: List<SavedSnapshot>, connections: List<Conne
 private val courseColors = listOf(Color(0xFFEAF1FF), Color(0xFFE7F5F0), Color(0xFFFFF2DE), Color(0xFFF1ECFF), Color(0xFFFFEDEE), Color(0xFFE8F5FC))
 
 @Composable
-fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier = Modifier) {
+fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier = Modifier, headerActions: @Composable () -> Unit = {}) {
     val schedule = remember(snapshot.payload) { CourseSchedules.read(CaptureReader.decode(snapshot.payload)) }
     val term = remember(snapshot.scope) { CourseSchedules.term(snapshot.scope) }
     val weekCount = CourseSchedules.weekCount(term, schedule)
@@ -81,7 +84,7 @@ fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier
     val sectionCount = maxOf(10, active.maxOfOrNull { it.lastSection } ?: 10)
     Column(modifier.fillMaxWidth().testTag("course-week-view")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { week-- }, enabled = week > 1, modifier = Modifier.testTag("previous-week")) { Text("‹", fontSize = 25.sp) }
+            IconButton(onClick = { week-- }, enabled = week > 1, modifier = Modifier.size(40.dp).testTag("previous-week")) { Text("‹", fontSize = 25.sp) }
             Box(Modifier.weight(1f)) {
                 TextButton(onClick = { chooseWeek = true }) {
                     Column {
@@ -94,24 +97,27 @@ fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier
                     for (value in 1..weekCount) DropdownMenuItem(text = { Text("第${value}周") }, onClick = { week = value; chooseWeek = false })
                 }
             }
-            TextButton(onClick = { week = (currentWeek ?: 1).coerceIn(1, weekCount) }, enabled = currentWeek != null) { Text("本周") }
-            TextButton(onClick = { listView = !listView }, modifier = Modifier.testTag("course-list-toggle")) { Text(if (listView) "周表" else "列表") }
-            TextButton(onClick = { week++ }, enabled = week < weekCount, modifier = Modifier.testTag("next-week")) { Text("›", fontSize = 25.sp) }
+            TextButton(onClick = { week = (currentWeek ?: 1).coerceIn(1, weekCount) }, enabled = currentWeek != null, contentPadding = PaddingValues(4.dp), modifier = Modifier.width(44.dp)) { Text("本周") }
+            TextButton(onClick = { listView = !listView }, contentPadding = PaddingValues(4.dp), modifier = Modifier.width(44.dp).testTag("course-list-toggle")) { Text(if (listView) "周表" else "列表") }
+            IconButton(onClick = { week++ }, enabled = week < weekCount, modifier = Modifier.size(40.dp).testTag("next-week")) { Text("›", fontSize = 25.sp) }
+            headerActions()
         }
-        Text("本周 ${active.size} 次课程 · 点击查看详情", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
         if (!listView) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
             Spacer(Modifier.width(28.dp))
             for (day in 1..7) {
                 val date = monday?.plusDays(day - 1L)
                 val highlight = date == today
-                Column(Modifier.weight(1f).padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.weight(1f).padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("一二三四五六日"[day - 1].toString(), fontSize = 12.sp, color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
                     Text(date?.dayOfMonth?.toString() ?: "", modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(if (highlight) MaterialTheme.colorScheme.primary else Color.Transparent).padding(horizontal = 7.dp, vertical = 3.dp),
                         color = if (highlight) Color.White else MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("course-grid-viewport")) {
+            // Measure the actual space below all headers. Eight daytime sections fill one viewport.
+            val sectionHeight = maxHeight / 8
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             if (listView) {
                 active.sortedWith(compareBy({ it.day }, { it.firstSection })).forEach { course ->
                     Card(onClick = { detail = course }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -125,20 +131,20 @@ fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier
             } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                     Column(Modifier.width(28.dp)) {
-                        for (section in 1..sectionCount) Box(Modifier.height(66.dp).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                        for (section in 1..sectionCount) Box(Modifier.height(sectionHeight).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
                             Text(section.toString(), Modifier.padding(top = 7.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                         }
                     }
                     val placements = CourseSchedules.place(active)
-                    for (day in 1..7) BoxWithConstraints(Modifier.weight(1f).height((sectionCount * 66).dp).border(0.5.dp, Color(0xFFEDF0F6))) {
+                    for (day in 1..7) BoxWithConstraints(Modifier.weight(1f).height(sectionHeight * sectionCount).border(0.5.dp, Color(0xFFEDF0F6))) {
                         val width = maxWidth
-                        for (section in 1 until sectionCount) HorizontalDivider(Modifier.offset(y = (section * 66).dp), color = Color(0xFFEDF0F6), thickness = 0.5.dp)
+                        for (section in 1 until sectionCount) HorizontalDivider(Modifier.offset(y = sectionHeight * section), color = Color(0xFFEDF0F6), thickness = 0.5.dp)
                         placements.filter { it.course.day == day }.forEach { placement ->
                             val course = placement.course
                             val color = courseColors[Math.floorMod(course.name.hashCode(), courseColors.size)]
                             Surface(onClick = { detail = course }, shape = RoundedCornerShape(7.dp), color = color,
-                                modifier = Modifier.offset(x = width * placement.lane / placement.lanes, y = ((course.firstSection - 1) * 66).dp)
-                                    .width(width / placement.lanes).height(((course.lastSection - course.firstSection + 1) * 66).dp).padding(2.dp)
+                                modifier = Modifier.offset(x = width * placement.lane / placement.lanes, y = sectionHeight * (course.firstSection - 1))
+                                    .width(width / placement.lanes).height(sectionHeight * (course.lastSection - course.firstSection + 1)).padding(2.dp)
                                     .semantics { contentDescription = "周" + "一二三四五六日"[day - 1] + "，${course.firstSection}至${course.lastSection}节，" + course.name }) {
                                 Column(Modifier.padding(horizontal = 4.dp, vertical = 7.dp)) {
                                     Text(course.name, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
@@ -161,6 +167,7 @@ fun CourseWeekView(snapshot: SavedSnapshot, today: LocalDate, modifier: Modifier
                 }
             }
             Text("保存于 " + java.time.Instant.ofEpochMilli(snapshot.capturedAt).atZone(SchoolCalendar.zone).format(DateTimeFormatter.ofPattern("MM-dd HH:mm")), Modifier.padding(20.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            }
         }
     }
     detail?.let { course -> AlertDialog(onDismissRequest = { detail = null }, title = { Text(course.name) },

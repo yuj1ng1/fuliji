@@ -39,7 +39,7 @@ fun SchoolConnectionSettings(app: CampusApplication, onDismiss: () -> Unit) {
         onDismissRequest = { if (!saving) onDismiss() }, title = { Text("学校连接与更新") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("榕集 " + BuildConfig.VERSION_NAME + " · 非学校官方应用", style = MaterialTheme.typography.labelMedium)
+                Text("福理集 " + BuildConfig.VERSION_NAME + " · 非学校官方应用", style = MaterialTheme.typography.labelMedium)
                 Text("可选择在这台手机加密保存账号密码，用于学校 WebVPN 和统一认证。不会把教务密码用于后勤后台，也不上传账号。", style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(username, { username = it.take(100) }, label = { Text("学校学号 / 工号") },
                     singleLine = true, modifier = Modifier.fillMaxWidth().testTag("school-username"))

@@ -54,6 +54,62 @@ class LiveSchoolProbeTest {
         val target = payload.optString("url", CampusSource.COURSES.entryUrl)
         require(WebPolicy.isSchoolUrl(target))
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        if (payload.optBoolean("powerWindow")) {
+            val app = context.applicationContext as CampusApplication
+            val previous = app.schoolSecrets.powerAccount()
+            if (payload.optString("username").isNotBlank()) app.schoolSecrets.savePowerAccount(SchoolAccount(payload.getString("username"), payload.getString("password")))
+            try {
+                val intent = android.content.Intent(context, io.github.yuj1ng1.mycampus.web.CampusWebActivity::class.java)
+                    .putExtra("source", "POWER").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                ActivityScenario.launch<io.github.yuj1ng1.mycampus.web.CampusWebActivity>(intent).use { scenario ->
+                    lateinit var view: WebView
+                    scenario.onActivity { activity -> view = activity.javaClass.getDeclaredField("schoolView").apply { isAccessible = true }.get(activity) as WebView }
+                    var ready = false
+                    var interactable = false
+                    repeat(35) { attempt ->
+                        val geometry = evaluate(scenario, view, """(function(){
+                            function shape(e){if(!e)return null;var r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,id:e.id,cls:e.className,x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:s.display,position:s.position,overflow:s.overflow,transform:s.transform,opacity:s.opacity};}
+                            var e=document.querySelector('#mobile'),chain=[],n=e;while(n&&chain.length<18){chain.push(shape(n));n=n.parentElement;}
+                            var r=e&&e.getBoundingClientRect();var hit=r&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+                            var st=document.getElementById('fuliji-power-viewport-style'),bs=document.body&&getComputedStyle(document.body);
+                            return JSON.stringify({host:location.hostname,path:location.pathname,innerW:innerWidth,innerH:innerHeight,scrollY:scrollY,hit:!!e&&hit===e,
+                                visualH:visualViewport?visualViewport.height:0,documentH:document.documentElement.scrollHeight,chain:chain,
+                                style:st?{rules:st.sheet?st.sheet.cssRules.length:-1,text:st.textContent,bodyHeight:bs.height,bodyMin:bs.minHeight,inlineHeight:document.body.style.height,inlineMin:document.body.style.minHeight}:null,
+                                body:shape(document.body),binding:!!e,filled:!!document.documentElement.dataset.rongjiPowerFilled});})();""")
+                        if (attempt % 7 == 0 || geometry.optBoolean("binding") && !ready) {
+                            scenario.onActivity {
+                                val rect = android.graphics.Rect(); view.getGlobalVisibleRect(rect)
+                                geometry.put("nativeW", view.width).put("nativeH", view.height).put("nativeContentH", view.contentHeight)
+                                    .put("nativeScrollY", view.scrollY).put("screenRect", rect.toShortString())
+                            }
+                            println("POWER_WINDOW " + geometry)
+                        }
+                        ready = ready || geometry.optBoolean("binding")
+                        interactable = interactable || geometry.optBoolean("hit")
+                        if (payload.optBoolean("quick") && geometry.optJSONObject("style") != null && (!payload.optBoolean("expectVisible") || geometry.optBoolean("hit"))) {
+                            println("POWER_CSS " + geometry.optJSONObject("style")); println("POWER_VISIBLE " + geometry.optBoolean("hit"))
+                            if (payload.optBoolean("screenshot")) {
+                                ui.waitForIdle()
+                                InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { bitmap ->
+                                    java.io.File(context.cacheDir, "private-power-window.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+                                }
+                            }
+                            return@use
+                        }
+                        if (attempt == 25 && payload.optBoolean("screenshot")) {
+                            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { bitmap ->
+                                java.io.File(context.cacheDir, "private-power-window.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                                bitmap.recycle()
+                            }
+                        }
+                        Thread.sleep(700)
+                    }
+                    check(ready) { "Binding document was not reached in the actual app window" }
+                    if (payload.optBoolean("expectVisible")) check(interactable) { "Phone field was not visible to hit testing in the actual app window" }
+                }
+            } finally { if (previous == null) app.schoolSecrets.removePowerAccount() else app.schoolSecrets.savePowerAccount(previous) }
+            return
+        }
         if (payload.optBoolean("hqInspect")) {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 lateinit var view: WebView
@@ -246,7 +302,7 @@ class LiveSchoolProbeTest {
         }
     }
 
-    private fun evaluate(scenario: ActivityScenario<MainActivity>, view: WebView, script: String): JSONObject {
+    private fun <A : androidx.activity.ComponentActivity> evaluate(scenario: ActivityScenario<A>, view: WebView, script: String): JSONObject {
         val done = CountDownLatch(1)
         val result = AtomicReference<String>()
         scenario.onActivity { view.evaluateJavascript(script) { result.set(it); done.countDown() } }

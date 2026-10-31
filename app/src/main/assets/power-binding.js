@@ -11,8 +11,11 @@ function (config) {
         for (var current = node; current && current.nodeType === 1; current = current.parentElement) {
             var style = getComputedStyle(current);
             if (style.display === "none" || style.visibility === "hidden") return false;
+            var rect = current.getBoundingClientRect();
+            if ((style.overflow === "hidden" || style.overflow === "clip" || style.overflow === "auto") && (rect.width < 1 || rect.height < 1)) return false;
         }
-        return true;
+        var box = node.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
     }
     var user = document.querySelector("#studentid");
     var pass = document.querySelector("#password");

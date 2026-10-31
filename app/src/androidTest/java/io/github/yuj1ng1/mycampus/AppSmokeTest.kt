@@ -13,7 +13,7 @@ class AppSmokeTest {
 
     @Test fun homeAndCampusNavigationWorkWithoutSchoolLogin() {
         ui.onNodeWithTag("home").assertIsDisplayed()
-        ui.onNodeWithText("榕集").assertIsDisplayed()
+        ui.onNodeWithText("福理集").assertIsDisplayed()
         ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("考试安排").assertIsDisplayed()
         ui.onNodeWithText("成绩查询").assertIsDisplayed()

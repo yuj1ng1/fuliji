@@ -49,7 +49,7 @@ class PowerUiTest {
         val balance = SavedSnapshot("power-demo", "POWER", history.scope, CaptureReader.encode(listOf(DisplayRow(history.scope, "42.80 度"))), 1, 1)
         ui.setContent {
             CampusTheme {
-                Scaffold(topBar = { CampusHeader("榕集", "界面演示 · 下列均为合成数据", {}) }, bottomBar = { CampusBottomBar(0) {} }) { padding ->
+                Scaffold(topBar = { CampusHeader("福理集", "界面演示 · 下列均为合成数据", {}) }, bottomBar = { CampusBottomBar(0) {} }) { padding ->
                     Box(Modifier.padding(padding)) {
                         CampusDashboard(today, listOf(history, balance), emptyList(), {}, {}, {}, {}, {}, {}, {})
                     }

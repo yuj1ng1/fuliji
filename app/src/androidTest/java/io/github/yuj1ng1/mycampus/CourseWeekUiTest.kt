@@ -3,6 +3,10 @@ package io.github.yuj1ng1.mycampus
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -12,6 +16,7 @@ import io.github.yuj1ng1.mycampus.data.SavedSnapshot
 import io.github.yuj1ng1.mycampus.domain.*
 import io.github.yuj1ng1.mycampus.ui.*
 import org.junit.Rule
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -50,8 +55,8 @@ class CourseWeekUiTest {
 
     @Test fun syntheticWeekGridScreenshot() {
         ui.setContent { CampusTheme {
-            Scaffold(topBar = { CampusHeader("课表", "界面演示 · 以下均为合成数据", {}) }, bottomBar = { CampusBottomBar(1) {} }) { padding ->
-                CourseWeekView(snapshot, today, Modifier.fillMaxSize().padding(padding))
+            Scaffold(topBar = { CampusHeader("课表 · 合成示例", "", {}, compact = true) }, bottomBar = { CampusBottomBar(1) {} }) { padding ->
+                Box(Modifier.fillMaxSize().padding(padding)) { CourseScheduleScreen(listOf(fullDaySnapshot), emptyList(), today) }
             }
         } }
         ui.onNodeWithText("第8周").assertIsDisplayed()
@@ -59,4 +64,38 @@ class CourseWeekUiTest {
             ui.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
         }
     }
+
+    private val fullDayRows = (0..4).map { block ->
+        DisplayRow("星期一 · 合成日间第${block + 1}段", "(${block * 2 + 1}-${block * 2 + 2}节)1-16周\n示例教室\n示例教师")
+    }
+    private val fullDaySnapshot = snapshot.copy(id = "synthetic-full-day", payload = CaptureReader.encode(fullDayRows), itemCount = fullDayRows.size)
+
+    private fun verifyDayFits(fontScale: Float) {
+        ui.setContent { CampusTheme {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale)) {
+                Box(Modifier.requiredSize(360.dp, 680.dp)) {
+                    Scaffold(topBar = { CampusHeader("课表", "", {}, compact = true) }, bottomBar = { CampusBottomBar(1) {} }) { padding ->
+                        Box(Modifier.fillMaxSize().padding(padding)) { CourseScheduleScreen(listOf(fullDaySnapshot), emptyList(), today) }
+                    }
+                }
+            }
+        } }
+        val viewport = ui.onNodeWithTag("course-grid-viewport").getUnclippedBoundsInRoot()
+        for (block in 0..3) {
+            val node = ui.onNodeWithContentDescription("周一，${block * 2 + 1}至${block * 2 + 2}节，合成日间第${block + 1}段")
+            node.assertIsDisplayed()
+            val bounds = node.getUnclippedBoundsInRoot()
+            assertTrue("Daytime block must fit fully above navigation", bounds.top >= viewport.top - 1.dp && bounds.bottom <= viewport.bottom + 1.dp)
+        }
+        val evening = ui.onNodeWithContentDescription("周一，9至10节，合成日间第5段")
+        assertTrue(evening.getUnclippedBoundsInRoot().top >= viewport.bottom - 1.dp)
+        ui.onNodeWithTag("course-grid-viewport").performTouchInput { swipeUp() }
+        evening.assertIsDisplayed()
+        ui.onNodeWithTag("course-more").performClick()
+        ui.onNodeWithText("更新此学期").assertIsDisplayed()
+    }
+
+    @Test fun firstEightSectionsFitIncludingRealHeaderAndNavigation() = verifyDayFits(1f)
+    @Test fun largerSystemTextStillKeepsFourDaytimeBlocksOnFirstScreen() = verifyDayFits(1.25f)
 }

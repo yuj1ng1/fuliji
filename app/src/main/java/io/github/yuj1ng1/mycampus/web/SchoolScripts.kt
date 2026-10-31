@@ -38,6 +38,8 @@ object SchoolScripts {
         return "(" + script + ")(" + config.toString() + ");"
     }
 
+    fun powerViewport(context: Context): String = context.assets.open("power-viewport.js").bufferedReader().use { it.readText() }
+
     fun sameAcademicScope(first: String, second: String): Boolean {
         fun identity(value: String) = Regex("(\\d{4})[-—](\\d{4}).*?第?([123])学期").find(value)?.groupValues?.drop(1)
         val one = identity(first)

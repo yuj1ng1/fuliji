@@ -36,12 +36,12 @@ private val Muted = Color(0xFF8B96A9)
 private val Line = Color(0xFFEDF0F6)
 
 @Composable
-fun CampusHeader(title: String, subtitle: String, onSettings: () -> Unit, onAdd: (() -> Unit)? = null) {
+fun CampusHeader(title: String, subtitle: String, onSettings: () -> Unit, onAdd: (() -> Unit)? = null, compact: Boolean = false) {
     Row(
-        Modifier.fillMaxWidth().statusBarsPadding().height(66.dp).padding(horizontal = 20.dp),
+        Modifier.fillMaxWidth().statusBarsPadding().height(if (compact) 46.dp else 66.dp).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (title == "榕集") {
+        if (title == "福理集") {
             Surface(shape = RoundedCornerShape(12.dp), color = Blue) {
                 Icon(CampusIcons.School, null, Modifier.padding(9.dp).size(22.dp), tint = Color.White)
             }
@@ -49,7 +49,7 @@ fun CampusHeader(title: String, subtitle: String, onSettings: () -> Unit, onAdd:
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge)
-            Text(subtitle, style = MaterialTheme.typography.labelMedium, color = Muted)
+            if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = Muted)
         }
         if (onAdd != null) IconButton(onClick = onAdd, modifier = Modifier.testTag("add-expense")) {
             Icon(CampusIcons.Add, "新增记账", Modifier.size(21.dp))
