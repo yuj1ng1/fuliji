@@ -23,6 +23,9 @@ object CaptureReader {
             "ok", "empty" -> Unit
             else -> throw CaptureException("尚未识别到完整结果；原有数据已保留。")
         }
+        if (!source.isAcademic && root.has("source") && root.optString("source") != source.name) {
+            throw CaptureException("当前标签页与本次查询不一致，请重新选择余额或房间用量。", "NOT_READY")
+        }
         val scope = root.optString("scope").trim()
         if (scope.isBlank() || scope.length > 200) throw CaptureException("无法确认本次查询的学期或房间，暂不保存。")
         if (source == CampusSource.POWER) return readPower(root, scope)

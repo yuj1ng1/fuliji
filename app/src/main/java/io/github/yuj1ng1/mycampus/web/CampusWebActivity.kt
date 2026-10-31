@@ -34,6 +34,7 @@ import java.net.URI
 class CampusWebActivity : ComponentActivity() {
     private lateinit var schoolView: WebView
     private lateinit var source: CampusSource
+    private var resultSource by mutableStateOf(CampusSource.POWER)
     private lateinit var login: SchoolLoginSession
     private var loading by mutableStateOf(true)
     private var saving by mutableStateOf(false)
@@ -58,6 +59,7 @@ class CampusWebActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         source = runCatching { CampusSource.valueOf(intent.getStringExtra("source").orEmpty()) }.getOrNull()
             ?: run { finish(); return }
+        resultSource = source
         SchoolBrowserLease.enter()
         browserLease = true
         enableEdgeToEdge()
@@ -121,7 +123,7 @@ class CampusWebActivity : ComponentActivity() {
                             }, enabled = !saving) { Text(if (source.isAcademic) "学校登录" else "后勤接入") }
                             TextButton(onClick = { loadEntry() }, enabled = !saving) { Text("重新打开") }
                         }
-                        Text(source.label + " · " + host, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleSmall)
+                        Text(resultSource.label + " · " + host, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleSmall)
                         Text(message, Modifier.padding(16.dp, 8.dp), style = MaterialTheme.typography.bodySmall)
                         Button(onClick = {
                             pendingSave = true
@@ -191,6 +193,11 @@ class CampusWebActivity : ComponentActivity() {
             }
             val root = withTimeout(10_000) { SchoolScripts.evaluate(schoolView, SchoolScripts.capture(this@CampusWebActivity, source)) }
             if (generation != navigationGeneration || schoolView.url != url || isFinishing) return
+            if (!source.isAcademic) resultSource = when (root.optString("source")) {
+                "POWER" -> CampusSource.POWER
+                "POWER_USAGE" -> CampusSource.POWER_USAGE
+                else -> source
+            }
             val state = root.optString("status")
             val info = diagnosticInfo(state).put("counts", root.optJSONObject("diagnostics") ?: JSONObject())
             diagnostics = info.toString(2)
@@ -212,7 +219,7 @@ class CampusWebActivity : ComponentActivity() {
                 } else message = if (source.isAcademic) "请先选择学期并完成学校页面的查询，结果加载后即可保存。" else "请先选择宿舍并完成查询；用量请切换到“房间用量”。"
                 return
             }
-            val capture = CaptureReader.read(source, url, root.toString())
+            val capture = CaptureReader.read(resultSource, url, root.toString())
             resultPage = true
             if (!pendingSave) {
                 message = if (capture.empty) "本次查询已确认无记录，可以保存。" else "已识别完整结果，可点击“读取并保存”。"
@@ -220,8 +227,9 @@ class CampusWebActivity : ComponentActivity() {
             }
             pendingSave = false
             saving = true
+            val savedSource = resultSource
             try {
-                withContext(Dispatchers.IO) { app.repository.saveCapture(source, capture) }
+                withContext(Dispatchers.IO) { app.repository.saveCapture(savedSource, capture) }
                 CookieManager.getInstance().flush()
                 finish()
             } finally { saving = false }
@@ -248,15 +256,16 @@ class CampusWebActivity : ComponentActivity() {
     private fun diagnosticInfo(state: String) = JSONObject().put("app", BuildConfig.VERSION_NAME).put("source", source.name)
         .put("host", host).put("webView", WebView.getCurrentWebViewPackage()?.versionName.orEmpty()).put("status", state)
         .put("viewWidth", schoolView.width).put("viewHeight", schoolView.height)
-        .put("pageLayout", login.powerViewport ?: JSONObject())
+        .put("resultSource", resultSource.name).put("pageLayout", login.powerViewport ?: JSONObject())
 
     private fun fail(state: String, text: String) {
         message = text
         val key = navigationGeneration.toString() + "|" + state + "|" + text
         if (key == lastFailure) return
         lastFailure = key
+        val failedSource = resultSource
         app.applicationScope.launch {
-            try { app.repository.recordFailure(source, state, text) }
+            try { app.repository.recordFailure(failedSource, state, text) }
             catch (_: Exception) { /* The visible error remains; never log school content or URLs. */ }
         }
     }

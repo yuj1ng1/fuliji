@@ -96,6 +96,7 @@ private fun CampusApp(repository: CampusRepository) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
                 today = LocalDate.now(SchoolCalendar.zone)
+                app.applicationScope.launch { app.schoolSync.onForeground() }
                 delay(60_000)
             }
         }
@@ -304,6 +305,8 @@ private fun SnapshotScreen(source: CampusSource, snapshots: List<SavedSnapshot>,
 private fun PowerScreen(snapshots: List<SavedSnapshot>, connections: List<ConnectionState>, today: LocalDate) {
     val context = LocalContext.current
     val app = context.applicationContext as CampusApplication
+    val options by app.schoolOptions.options.collectAsStateWithLifecycle()
+    val sync by app.schoolSync.progress.collectAsStateWithLifecycle()
     var showPowerAccess by remember { mutableStateOf(false) }
     val saved = snapshots.filter { it.source == CampusSource.POWER.name || it.source == CampusSource.POWER_USAGE.name }
     val latestRoom = saved.firstOrNull()?.scope
@@ -340,7 +343,24 @@ private fun PowerScreen(snapshots: List<SavedSnapshot>, connections: List<Connec
                 }
             }
         }
-        item { Text("余额与用量需要分别查询保存。查看用量时，请在后勤页面选择“房间用量”和宿舍。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("每日自动更新", style = MaterialTheme.typography.titleSmall)
+                Switch(options.powerDailyRefresh, { enabled ->
+                    app.schoolOptions.update(powerDailyRefresh = enabled)
+                    app.schoolSync.configureSchedule()
+                    if (enabled) app.applicationScope.launch { app.schoolSync.refresh(CampusSource.POWER, onlyStale = true, requestedScope = room) }
+                }, modifier = Modifier.testTag("power-daily-refresh"))
+            }
+            Text("沿用已保存的宿舍，后台约每6小时检查余额和近7天用量，打开应用时补更。系统可能延后；学校会话失效时需重新连接。",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            OutlinedButton(onClick = { app.applicationScope.launch { app.schoolSync.refresh(CampusSource.POWER, requestedScope = room) } },
+                enabled = room != null && !sync.running, modifier = Modifier.fillMaxWidth().testTag("refresh-power-pair")) {
+                Text(if (sync.running) "正在更新…" else "立即更新余额和用量")
+            }
+            if (sync.message != "尚未开始自动更新") Text(sync.message, style = MaterialTheme.typography.bodySmall)
+        }
+        item { Text("首次查询请选房后保存。在学校页面切换到余额或房间用量，应用会识别当前标签页并保存对应结果。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
         connections.filter { it.source in setOf(CampusSource.POWER.name, CampusSource.POWER_USAGE.name) && it.state != "SUCCESS" }.forEach { state ->
             item { Text(state.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }

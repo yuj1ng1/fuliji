@@ -18,10 +18,12 @@ object SchoolBrowserLease {
 class SchoolBrowserBusy : Exception()
 
 /** Uses the same app cookie jar and the actual page extractor. No credentials in WorkManager input or HTTP reimplementations. */
-class SchoolSyncEngine(private val context: Context, private val options: SchoolPreferences, private val secrets: SchoolSecrets) {
+class SchoolSyncEngine(private val context: Context, private val options: SchoolPreferences, private val secrets: SchoolSecrets,
+                       private val createWebView: (Context) -> WebView = { WebView(it) }) {
     suspend fun fetch(source: CampusSource, requestedScope: String?): Capture = withContext(Dispatchers.Main.immediate) {
         if (SchoolBrowserLease.active) throw SchoolBrowserBusy()
-        val view = WebView(context)
+        val entry = if (source.isAcademic) source.entryUrl else secrets.powerLink() ?: source.entryUrl
+        val view = createWebView(context)
         SchoolWebSettings.apply(view)
         view.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
             android.view.View.MeasureSpec.makeMeasureSpec(1800, android.view.View.MeasureSpec.EXACTLY))
@@ -49,10 +51,10 @@ class SchoolSyncEngine(private val context: Context, private val options: School
                 handler.cancel(); failure = CaptureException("学校证书校验未通过，已停止连接。", "NETWORK_ERROR")
             }
         }
-        view.loadUrl(source.entryUrl)
+        view.loadUrl(entry)
         var querySubmitted = false
         var routedLoginBody = false
-        var retriedPowerAuthorization = false
+        var retriedPowerAuthorization = !source.isAcademic && entry != source.entryUrl
         try {
             withTimeout(75_000) {
                 while (true) {
@@ -68,10 +70,12 @@ class SchoolSyncEngine(private val context: Context, private val options: School
                         val root = SchoolScripts.evaluate(view, SchoolScripts.capture(context, source))
                         if (generation != currentGeneration || view.url != url) { delay(300); continue }
                         val state = root.optString("status")
-                        if (state == "ok" || state == "empty") {
+                        val matchesSource = source.isAcademic || root.optString("source", source.name) == source.name
+                        if ((state == "ok" || state == "empty") && matchesSource && (source.isAcademic || querySubmitted)) {
                             val capture = CaptureReader.read(source, url, root.toString())
                             val sameScope = requestedScope == null || if (source.isAcademic) SchoolScripts.sameAcademicScope(requestedScope, capture.scope) else requestedScope == capture.scope
                             if (sameScope) return@withTimeout capture
+                            if (!source.isAcademic) throw CaptureException("学校返回的房间与已保存宿舍不一致，请本人重新选房；旧数据已保留。", "NEEDS_SELECTION")
                         }
                         if (state == "login") {
                             if (!source.isAcademic) {

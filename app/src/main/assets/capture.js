@@ -1,6 +1,7 @@
 (function () {
     "use strict";
     var source = "__CAMPUS_SOURCE__";
+    var powerPage = source === "POWER" || source === "POWER_USAGE";
     // School scripts replace Array.prototype.filter/some with incompatible callback signatures.
     // Use indexed DOM loops in the page's own JavaScript world.
     function visible(node) {
@@ -11,7 +12,16 @@
         }
         return true;
     }
-    function answer(value) { return JSON.stringify(value); }
+    if (powerPage) {
+        var activeUsage = document.querySelector("#tab4");
+        var activeBalance = document.querySelector("#tab1");
+        if (activeUsage && visible(activeUsage)) source = "POWER_USAGE";
+        else if (activeBalance && visible(activeBalance)) source = "POWER";
+    }
+    function answer(value) {
+        if (powerPage) value.source = source;
+        return JSON.stringify(value);
+    }
     var passwords = document.querySelectorAll("input[type=password]");
     for (var p = 0; p < passwords.length; p++) if (visible(passwords[p])) return answer({status: "login"});
     var text = (document.body && document.body.innerText) || "";
@@ -28,11 +38,14 @@
         var panel = document.querySelector("#tab4");
         var usageRoom = document.querySelector("#picker-addr-view");
         var usageTable = panel && panel.querySelector("ul.table");
-        if (!visible(panel) || !usageRoom || !usageRoom.value || !usageTable) return answer({status: "not_queried"});
+        if (!visible(panel) || !visible(usageRoom) || !usageRoom.value || !visible(usageTable)) return answer({status: "not_queried"});
         var usageRows = [];
         var items = usageTable.querySelectorAll("li");
         for (var u = 0; u < items.length; u++) {
-            var itemText = items[u].innerText.trim();
+            var dateCell = items[u].querySelector(".table_1");
+            var valueCell = items[u].querySelector(".table_2");
+            if (!!dateCell !== !!valueCell) return answer({status: "unknown"});
+            var itemText = dateCell ? dateCell.textContent.trim() + " " + valueCell.textContent.trim() : items[u].innerText.trim();
             if (itemText && !/^日期\s+用量$/.test(itemText)) usageRows.push(itemText);
         }
         if (!usageRows.length) return answer({status: "not_queried"});

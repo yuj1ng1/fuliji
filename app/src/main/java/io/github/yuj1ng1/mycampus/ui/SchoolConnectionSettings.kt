@@ -95,8 +95,8 @@ fun SchoolConnectionSettings(app: CampusApplication, onDismiss: () -> Unit) {
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
-                        Text("自动更新已接入的数据", style = MaterialTheme.typography.titleSmall)
-                        Text("打开应用时检查，后台约每6小时尝试；系统可能延后。未完成授权或选房的功能会保留旧数据。", style = MaterialTheme.typography.bodySmall)
+                        Text("教务自动更新", style = MaterialTheme.typography.titleSmall)
+                        Text("打开应用时检查课表、考试和成绩，后台约每6小时尝试；系统可能延后。用电在宿舍页面单独设置，失败保留旧数据。", style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(options.autoRefresh, {
                         app.schoolOptions.update(autoRefresh = it)
