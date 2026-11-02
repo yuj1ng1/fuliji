@@ -1,6 +1,7 @@
 package io.github.yuj1ng1.mycampus.sync
 
 import android.content.Context
+import android.net.ConnectivityManager
 import androidx.work.*
 import io.github.yuj1ng1.mycampus.CampusApplication
 import io.github.yuj1ng1.mycampus.data.*
@@ -16,11 +17,13 @@ data class SchoolSyncProgress(val running: Boolean = false, val message: String 
 
 class SchoolAutoSync(private val context: Context, private val repository: CampusRepository,
                      private val options: SchoolPreferences, secrets: SchoolSecrets,
-                     private val fetch: suspend (CampusSource, String?) -> Capture = SchoolSyncEngine(context, options, secrets)::fetch) {
+                     private val fetch: suspend (CampusSource, String?) -> Capture = SchoolSyncEngine(context, options, secrets)::fetch,
+                     private val currentNetwork: () -> Long = { context.getSystemService(ConnectivityManager::class.java)?.activeNetwork?.networkHandle ?: 0L }) {
     private val mutex = Mutex()
     private val mutable = MutableStateFlow(SchoolSyncProgress())
     val progress = mutable.asStateFlow()
     private var lastForegroundAttempt = 0L
+    private var lastForegroundNetwork: Long? = null
 
     // Settings holds a browser lease first, then waits until an in-flight refresh has exited.
     // This prevents an old account's response from being saved after its cache is cleared.
@@ -36,8 +39,11 @@ class SchoolAutoSync(private val context: Context, private val repository: Campu
     }
 
     suspend fun onForeground() {
-        if ((!options.current.autoRefresh && !options.current.powerDailyRefresh) || SchoolBrowserLease.active ||
-            System.currentTimeMillis() - lastForegroundAttempt in 0 until 30 * 60_000L) return
+        if ((!options.current.autoRefresh && !options.current.powerDailyRefresh) || SchoolBrowserLease.active) return
+        val network = currentNetwork()
+        if (network == 0L) return
+        if (lastForegroundNetwork == network && System.currentTimeMillis() - lastForegroundAttempt in 0 until 30 * 60_000L) return
+        lastForegroundNetwork = network
         lastForegroundAttempt = System.currentTimeMillis()
         refresh(onlyStale = true, scheduled = true)
     }
@@ -58,11 +64,13 @@ class SchoolAutoSync(private val context: Context, private val repository: Campu
             mutable.value = SchoolSyncProgress(true, "正在更新已接入的校园数据…")
             var updated = 0
             var attention = 0
+            var powerAuthFailure: CaptureException? = null
             for (source in targets) {
                 val scope = if (source.isAcademic) requestedScope else powerRoom
                 val previous = snapshots.firstOrNull { it.source == source.name && (scope == null || it.scope == scope) }
                 if (onlyStale && previous != null && System.currentTimeMillis() - previous.capturedAt < 30 * 60_000L) continue
                 try {
+                    if (!source.isAcademic) powerAuthFailure?.let { throw it }
                     val capture = fetch(source, scope ?: previous?.scope)
                     if (SchoolBrowserLease.active) break
                     repository.saveCapture(source, capture)
@@ -71,6 +79,8 @@ class SchoolAutoSync(private val context: Context, private val repository: Campu
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (problem: Exception) {
                     val captureProblem = problem as? CaptureException
+                    if (!source.isAcademic && captureProblem?.state in setOf("NEEDS_LOGIN", "NEEDS_CAPTCHA", "NEEDS_PHONE_VERIFICATION", "NEEDS_VPN", "NEEDS_WECOM"))
+                        powerAuthFailure = captureProblem
                     repository.recordFailure(source, captureProblem?.state ?: "UNRECOGNIZED", captureProblem?.userMessage ?: "本次更新未完成，请本人检查学校连接；原有数据已保留。")
                     attention++
                 }

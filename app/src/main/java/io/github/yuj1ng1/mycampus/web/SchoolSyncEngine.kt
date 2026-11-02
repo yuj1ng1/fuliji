@@ -7,6 +7,7 @@ import android.webkit.*
 import io.github.yuj1ng1.mycampus.data.*
 import io.github.yuj1ng1.mycampus.domain.*
 import kotlinx.coroutines.*
+import java.net.URI
 import java.util.concurrent.atomic.AtomicInteger
 
 object SchoolBrowserLease {
@@ -22,7 +23,8 @@ class SchoolSyncEngine(private val context: Context, private val options: School
                        private val createWebView: (Context) -> WebView = { WebView(it) }) {
     suspend fun fetch(source: CampusSource, requestedScope: String?): Capture = withContext(Dispatchers.Main.immediate) {
         if (SchoolBrowserLease.active) throw SchoolBrowserBusy()
-        val entry = if (source.isAcademic) source.entryUrl else secrets.powerLink() ?: source.entryUrl
+        // Start at the same stable school entry as the visible query. A saved signed URL can expire.
+        val entry = source.entryUrl
         val view = createWebView(context)
         SchoolWebSettings.apply(view)
         view.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
@@ -54,7 +56,28 @@ class SchoolSyncEngine(private val context: Context, private val options: School
         view.loadUrl(entry)
         var querySubmitted = false
         var routedLoginBody = false
-        var retriedPowerAuthorization = !source.isAcademic && entry != source.entryUrl
+        var retriedPowerAuthorization = false
+        var usingPowerFallback = false
+        var returnedToStableEntry = false
+        fun recoverPowerAuthorization(): Boolean {
+            if (source.isAcademic) return false
+            val link = secrets.powerLink()
+            if (!retriedPowerAuthorization && link != null && SchoolAccessPolicy.isSignedPowerLink(link) && link != view.url) {
+                retriedPowerAuthorization = true
+                usingPowerFallback = true
+                querySubmitted = false
+                view.loadUrl(link)
+                return true
+            }
+            if (usingPowerFallback && !returnedToStableEntry) {
+                returnedToStableEntry = true
+                usingPowerFallback = false
+                querySubmitted = false
+                view.loadUrl(entry)
+                return true
+            }
+            return false
+        }
         try {
             withTimeout(75_000) {
                 while (true) {
@@ -62,7 +85,11 @@ class SchoolSyncEngine(private val context: Context, private val options: School
                     failure?.let { throw it }
                     if (loading) { delay(500); continue }
                     val progress = auth.advance(view, source)
-                    if (progress.requiresUser) throw CaptureException(progress.message, when (progress.state) { "CAPTCHA" -> "NEEDS_CAPTCHA"; "PHONE_REQUIRED" -> "NEEDS_PHONE_VERIFICATION"; else -> "NEEDS_LOGIN" })
+                    if (progress.requiresUser) {
+                        if (progress.state == "PHONE_REQUIRED" && recoverPowerAuthorization()) { delay(500); continue }
+                        if (!source.isAcademic && isVpnPage(view.url.orEmpty())) throw vpnRequired()
+                        throw CaptureException(progress.message, when (progress.state) { "CAPTCHA" -> "NEEDS_CAPTCHA"; "PHONE_REQUIRED" -> "NEEDS_PHONE_VERIFICATION"; else -> "NEEDS_LOGIN" })
+                    }
                     if (progress.state != "NONE") { delay(700); continue }
                     val url = view.url.orEmpty()
                     val currentGeneration = generation
@@ -74,17 +101,17 @@ class SchoolSyncEngine(private val context: Context, private val options: School
                         if ((state == "ok" || state == "empty") && matchesSource && (source.isAcademic || querySubmitted)) {
                             val capture = CaptureReader.read(source, url, root.toString())
                             val sameScope = requestedScope == null || if (source.isAcademic) SchoolScripts.sameAcademicScope(requestedScope, capture.scope) else requestedScope == capture.scope
-                            if (sameScope) return@withTimeout capture
+                            if (sameScope) {
+                                // Refresh an opted-in link only after a complete result for the requested room.
+                                if (!source.isAcademic && secrets.hasPowerLink() && SchoolAccessPolicy.isSignedPowerLink(url))
+                                    withContext(Dispatchers.IO) { secrets.savePowerLink(url) }
+                                return@withTimeout capture
+                            }
                             if (!source.isAcademic) throw CaptureException("学校返回的房间与已保存宿舍不一致，请本人重新选房；旧数据已保留。", "NEEDS_SELECTION")
                         }
                         if (state == "login") {
                             if (!source.isAcademic) {
-                                val link = secrets.powerLink()
-                                if (!retriedPowerAuthorization && link != null) {
-                                    retriedPowerAuthorization = true
-                                    view.loadUrl(link)
-                                    delay(500); continue
-                                }
+                                if (recoverPowerAuthorization()) { delay(500); continue }
                                 throw CaptureException("学校仍要求手机号验证或绑定，请本人打开后勤连接确认，原有数据已保留。", "NEEDS_PHONE_VERIFICATION")
                             }
                             if (routedLoginBody) throw CaptureException("学校登录尚未完成，请本人确认。", "NEEDS_LOGIN")
@@ -104,8 +131,14 @@ class SchoolSyncEngine(private val context: Context, private val options: School
                 @Suppress("UNREACHABLE_CODE") error("unreachable")
             }
         } catch (_: TimeoutCancellationException) {
+            if (!source.isAcademic && isVpnPage(view.url.orEmpty())) throw vpnRequired()
             throw CaptureException(if (source.isAcademic) "本次自动更新超时，原有数据已保留。" else "后勤授权或房间查询尚未完成，请本人检查后勤接入。",
                 if (source.isAcademic) "NETWORK_ERROR" else "NEEDS_WECOM")
         } finally { view.stopLoading(); view.destroy() }
     }
+
+    private fun isVpnPage(url: String): Boolean = runCatching {
+        URI(url).host?.lowercase() in setOf("vpnsite.fjut.edu.cn", "webvpn.fjut.edu.cn")
+    }.getOrDefault(false)
+    private fun vpnRequired() = CaptureException("校外访问需要完成学校 WebVPN 连接，或连接校园网后更新；原有余额和用量已保留。", "NEEDS_VPN")
 }

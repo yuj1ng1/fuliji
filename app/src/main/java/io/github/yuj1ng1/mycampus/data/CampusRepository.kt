@@ -29,17 +29,6 @@ class CampusRepository(private val database: CampusDatabase) {
         dao.putConnection(ConnectionState(source.name, state, message.take(250), System.currentTimeMillis()))
     }
 
-    suspend fun saveCandidate(candidate: PaymentCandidate) {
-        saveCandidateIfNew(candidate)
-    }
-
-    suspend fun saveCandidateIfNew(candidate: PaymentCandidate): Boolean {
-        return dao.insertEntry(LedgerEntry(
-            candidate.eventId, candidate.sourceName, candidate.kind, candidate.amountCents,
-            candidate.notificationTime, "NOTIFICATION", "", "DRAFT",
-        )) != -1L
-    }
-
     suspend fun addExpense(cents: Long, note: String) {
         require(cents > 0)
         dao.insertEntry(LedgerEntry(UUID.randomUUID().toString(), "手动", "EXPENSE", cents,

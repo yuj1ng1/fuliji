@@ -49,8 +49,8 @@ fun LedgerSummaryCard(entries: List<LedgerEntry>, today: LocalDate) {
                 Text("含今天 · 已确认支出", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             }
             SpendingChart(series)
-            if (drafts > 0) Text("${drafts} 笔待确认，尚未计入支出", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-            Text("按本机已确认支出汇总，通知记录采用通知时间。", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            if (drafts > 0) Text("${drafts} 笔旧版记录待核对，尚未计入支出", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            Text("手动记账 · 按记录日期汇总本机已保存支出。", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

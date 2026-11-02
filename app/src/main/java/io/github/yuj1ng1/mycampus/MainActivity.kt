@@ -48,7 +48,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.core.net.toUri
 import io.github.yuj1ng1.mycampus.data.*
 import io.github.yuj1ng1.mycampus.domain.*
-import io.github.yuj1ng1.mycampus.notifications.PaymentNotificationListener
 import io.github.yuj1ng1.mycampus.ui.*
 import io.github.yuj1ng1.mycampus.web.CampusWebActivity
 import kotlinx.coroutines.launch
@@ -66,7 +65,6 @@ class MainActivity : ComponentActivity() {
         val repository = (application as CampusApplication).repository
         setContent { CampusTheme { CampusApp(repository) } }
     }
-    override fun onResume() { super.onResume(); PaymentNotificationListener.ensureConnected(this) }
 }
 
 private val tabs = listOf("今日", "课表", "校园", "账本")
@@ -141,17 +139,16 @@ private fun CampusApp(repository: CampusRepository) {
                 ) {
                     item { LedgerSummaryCard(ledger, today) }
                     if (drafts > 0) item {
-                        FilledTonalButton(onClick = { editing = ledger.first { it.status == "DRAFT" } }, modifier = Modifier.fillMaxWidth().testTag("review-latest-payment")) {
-                            Text("核对待确认支付（${drafts}笔）")
+                        OutlinedButton(onClick = { editing = ledger.first { it.status == "DRAFT" } }, modifier = Modifier.fillMaxWidth().testTag("review-legacy-entry")) {
+                            Text("核对旧版记录（${drafts}笔）")
                         }
                     }
-                    item { NotificationAccessCard() }
                     item {
-                        FilledTonalButton(onClick = { addExpense = true }, modifier = Modifier.fillMaxWidth()) {
+                        FilledTonalButton(onClick = { addExpense = true }, modifier = Modifier.fillMaxWidth().testTag("manual-add-expense")) {
                             Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("记一笔")
                         }
                     }
-                    if (ledger.isEmpty()) item { EmptyCard("还没有消费记录", "可以先手动记一笔。支付通知授权由你自行开启。") }
+                    if (ledger.isEmpty()) item { EmptyCard("还没有消费记录", "点击“记一笔”填写金额和备注，保存后计入支出。") }
                     items(ledger, key = { it.id }) { entry ->
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -162,7 +159,7 @@ private fun CampusApp(repository: CampusRepository) {
                                 Text(entry.source + " · " + kindName(entry.kind) + " · " + timestamp(entry.occurredAt),
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                                 if (entry.status == "DRAFT") {
-                                    Text("待确认 · 采用通知时间", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                                    Text("旧版待核对 · 沿用原记录日期", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                                     TextButton(onClick = { editing = entry }) { Text("核对后记为支出") }
                                 }
                                 TextButton(onClick = { deleting = entry }) { Text("删除记录", color = MaterialTheme.colorScheme.secondary) }
@@ -354,7 +351,7 @@ private fun PowerScreen(snapshots: List<SavedSnapshot>, connections: List<Connec
                     if (enabled) app.applicationScope.launch { app.schoolSync.refresh(CampusSource.POWER, onlyStale = true, requestedScope = room) }
                 }, modifier = Modifier.testTag("power-daily-refresh"))
             }
-            Text("沿用已保存的宿舍，后台约每6小时检查余额和近7天用量，打开应用时补更。系统可能延后；学校会话失效时需重新连接。",
+            Text("沿用已保存的宿舍，后台约每6小时检查，打开应用时补更；应用在前台时切换网络会重新检查。需要能访问学校后勤；校外需学校VPN连接，会话失效时需重新连接。系统可能延后。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             OutlinedButton(onClick = { app.applicationScope.launch { app.schoolSync.refresh(CampusSource.POWER, requestedScope = room) } },
                 enabled = room != null && !sync.running, modifier = Modifier.fillMaxWidth().testTag("refresh-power-pair")) {
@@ -363,7 +360,8 @@ private fun PowerScreen(snapshots: List<SavedSnapshot>, connections: List<Connec
             if (sync.message != "尚未开始自动更新") Text(sync.message, style = MaterialTheme.typography.bodySmall)
         }
         item { Text("首次查询请选房后保存。在学校页面切换到余额或房间用量，应用会识别当前标签页并保存对应结果。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
-        connections.filter { it.source in setOf(CampusSource.POWER.name, CampusSource.POWER_USAGE.name) && it.state != "SUCCESS" }.forEach { state ->
+        connections.filter { it.source in setOf(CampusSource.POWER.name, CampusSource.POWER_USAGE.name) && it.state != "SUCCESS" }
+            .distinctBy { it.state to it.message }.forEach { state ->
             item { Text(state.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
         item { SectionTitle("每日明细") }
@@ -396,7 +394,7 @@ private fun ExpenseDialog(entry: LedgerEntry?, onDismiss: () -> Unit, onSave: (L
         title = { Text(if (entry == null) "记一笔支出" else "核对支出") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (entry != null) Text(entry.source + " · " + kindName(entry.kind) + "\n采用通知时间，请与原账单核对。", style = MaterialTheme.typography.bodySmall)
+                if (entry != null) Text(entry.source + " · " + kindName(entry.kind) + "\n这是旧版保留的记录，请核对金额，保存时沿用原日期。", style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(amount, { amount = it }, label = { Text("金额（元）") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true, modifier = Modifier.testTag("expense-amount"),

@@ -76,17 +76,17 @@ class RepositoryTest {
         assertEquals("COURSES", repository.connections.first().single().source)
         assertEquals("合成账本", repository.ledger.first().single().note)
     }
-    @Test fun notificationDuplicateDoesNotOverwriteUserConfirmation() = runBlocking {
-        val candidate = PaymentCandidate("synthetic-event-id", "合成支付来源", "EXPENSE", 1230, 1234)
-        repository.saveCandidate(candidate)
-        repository.saveCandidate(candidate)
+    @Test fun legacyDraftCanBeConfirmedWithoutChangingItsOriginalDate() = runBlocking {
+        val id = "synthetic-legacy-entry"
+        database.dao().insertEntry(LedgerEntry(id, "旧版合成来源", "EXPENSE", 1230, 1234, "NOTIFICATION", "", "DRAFT"))
         assertEquals(1, repository.ledger.first().size)
         assertEquals("DRAFT", repository.ledger.first().single().status)
-        repository.confirmExpense(candidate.eventId, 1300, "本人修正")
-        repository.saveCandidate(candidate)
+        repository.confirmExpense(id, 1300, "本人修正")
+        repository.confirmExpense(id, 9999, "重复确认不得覆盖")
         val saved = repository.ledger.first().single()
         assertEquals("CONFIRMED", saved.status)
         assertEquals(1300L, saved.amountCents)
         assertEquals("本人修正", saved.note)
+        assertEquals(1234L, saved.occurredAt)
     }
 }
